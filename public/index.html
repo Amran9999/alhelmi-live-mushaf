@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlHelmi Live Mushaf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">AH</span>
+      <div>
+        <strong class="brand-title">AlHelmi Live Mushaf</strong>
+        <div class="meta" id="room-label">Bilik: —</div>
+      </div>
+    </div>
+    <div class="topbar-end">
+      <button
+        type="button"
+        class="btn btn-menu-toggle teacher-only"
+        id="toggle-menu"
+        aria-expanded="true"
+        aria-controls="teacher-toolbar"
+        title="Sembunyikan menu kawalan">
+        <svg class="menu-toggle-icon menu-toggle-icon-hide" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+        <svg class="menu-toggle-icon menu-toggle-icon-show" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z"/></svg>
+        <span id="toggle-menu-label">Sembunyikan menu</span>
+      </button>
+      <span class="status-pill" id="status-label">Menyambung…</span>
+      <span class="role-badge" id="role-label">—</span>
+    </div>
+  </header>
+
+  <section class="toolbar teacher-only" id="teacher-toolbar">
+    <div class="toolbar-grid">
+      <aside class="panel panel-modes">
+        <p class="panel-label">Mod kelas</p>
+        <div class="seg seg-pill" role="group" aria-label="Mod pengajaran">
+          <button type="button" class="seg-btn active" data-mode="bacaan">
+            <span class="seg-icon" aria-hidden="true">📖</span>
+            Bacaan
+          </button>
+          <button type="button" class="seg-btn" data-mode="hafazan">
+            <span class="seg-icon" aria-hidden="true">🔒</span>
+            Hafazan
+          </button>
+        </div>
+        <label class="field field-scope">
+          <span class="field-label">Label skop (hafazan)</span>
+          <input type="text" id="scope-input" placeholder="Contoh: Surah Yasin ayat 1–5" />
+        </label>
+      </aside>
+
+      <div class="panel panel-nav">
+        <p class="panel-label">Pergi ke</p>
+        <div class="seg seg-tabs" role="tablist" aria-label="Jenis carian">
+          <button type="button" class="seg-btn active" data-nav-tab="surah" role="tab" aria-selected="true">Surah</button>
+          <button type="button" class="seg-btn" data-nav-tab="juz" role="tab" aria-selected="false">Juzuk</button>
+          <button type="button" class="seg-btn" data-nav-tab="page" role="tab" aria-selected="false">Halaman</button>
+        </div>
+
+        <div id="nav-panel-surah" class="nav-panel" role="tabpanel">
+          <div class="search-combo" id="surah-combo">
+            <div class="search-input-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              <input
+                type="search"
+                id="surah-search"
+                class="search-input"
+                placeholder="Cari surah — Yasin, Mulk, 36…"
+                autocomplete="off"
+                aria-autocomplete="list"
+                aria-controls="surah-results"
+                aria-expanded="false" />
+            </div>
+            <ul id="surah-results" class="search-dropdown" role="listbox" hidden></ul>
+          </div>
+          <p class="nav-hint" id="surah-selection-hint">Halaman mula surah dipilih</p>
+        </div>
+
+        <div id="nav-panel-juz" class="nav-panel" hidden role="tabpanel">
+          <div class="search-input-wrap search-input-wrap-compact">
+            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input type="search" id="juz-search" class="search-input" placeholder="Cari juzuk — taip 5, 30…" autocomplete="off" />
+          </div>
+          <div id="juz-grid" class="juz-grid" role="listbox" aria-label="Pilih juzuk"></div>
+        </div>
+
+        <div id="nav-panel-page" class="nav-panel" hidden role="tabpanel">
+          <div class="page-stepper">
+            <button type="button" class="btn btn-icon" id="page-input-dec" aria-label="Kurangkan halaman">−</button>
+            <input type="number" id="page-input" class="page-input" min="1" max="604" value="1" inputmode="numeric" aria-label="Nombor halaman" />
+            <button type="button" class="btn btn-icon" id="page-input-inc" aria-label="Tambah halaman">+</button>
+            <span class="page-stepper-meta">/ 604</span>
+          </div>
+        </div>
+
+        <button type="button" id="go-nav" class="btn btn-primary btn-go">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+          Pergi
+        </button>
+      </div>
+
+      <div class="panel panel-controls">
+        <p class="panel-label">Kawalan</p>
+        <div class="control-cluster">
+          <span class="cluster-label">Zoom</span>
+          <div class="btn-group">
+            <button type="button" id="zoom-out" class="btn btn-icon" title="Kecilkan">−</button>
+            <span id="zoom-label" class="value-chip">100%</span>
+            <button type="button" id="zoom-in" class="btn btn-icon" title="Besarkan">+</button>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="sync-zoom" />
+            <span class="toggle-track"></span>
+            <span class="toggle-text">Sync pelajar</span>
+          </label>
+        </div>
+        <div class="control-cluster">
+          <span class="cluster-label">Halaman</span>
+          <div class="btn-group">
+            <button type="button" id="page-prev" class="btn btn-icon" aria-label="Halaman sebelum">‹</button>
+            <span id="page-label" class="value-chip value-chip-wide">1 / 604</span>
+            <button type="button" id="page-next" class="btn btn-icon" aria-label="Halaman seterusnya">›</button>
+          </div>
+        </div>
+        <div class="action-stack">
+          <button type="button" id="toggle-hide" class="btn btn-warning">Sembunyikan mushaf pelajar</button>
+          <button type="button" id="clear-highlight" class="btn btn-soft">Kosongkan highlight</button>
+          <button type="button" id="fullscreen" class="btn btn-ghost">Skrin penuh</button>
+        </div>
+        <div class="control-cluster control-cluster-video">
+          <span class="cluster-label">
+            Video kelas
+            <span class="phase-badge" title="Sambung ke BigBlueButton — Fasa 2">BBB</span>
+          </span>
+          <div class="seg seg-pill seg-compact" role="group" aria-label="Susun atur video">
+            <button type="button" class="seg-btn active" data-webcam-layout="pip">PiP</button>
+            <button type="button" class="seg-btn" data-webcam-layout="side">Panel</button>
+            <button type="button" class="seg-btn" data-webcam-layout="hidden">Sembunyi</button>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="webcam-teacher" />
+            <span class="toggle-track"></span>
+            <span class="toggle-text">Webcam guru</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="webcam-students" />
+            <span class="toggle-track"></span>
+            <span class="toggle-text">Webcam pelajar</span>
+          </label>
+          <p class="cluster-hint">Arahan dihantar ke halaman Moodle (BBB). Mic kekal melalui kelas live.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="toolbar student-only" id="student-toolbar">
+    <div class="student-bar">
+      <span id="student-mode-label" class="pill">Mod: Bacaan</span>
+      <div class="btn-group">
+        <button type="button" id="student-zoom-out" class="btn btn-icon">−</button>
+        <span id="student-zoom-label" class="value-chip">100%</span>
+        <button type="button" id="student-zoom-in" class="btn btn-icon">+</button>
+      </div>
+      <button type="button" id="student-fullscreen" class="btn btn-ghost">Skrin penuh</button>
+      <p class="student-hint">Halaman ikut guru — tunggu arahan kelas.</p>
+    </div>
+  </section>
+
+  <main class="stage">
+    <div id="hidden-screen" class="hidden-screen" hidden>
+      <div class="hidden-card">
+        <div class="hidden-icon" aria-hidden="true">🔒</div>
+        <h2>Baca dari hafalan anda</h2>
+        <p id="hidden-scope">Mushaf disembunyikan oleh guru.</p>
+        <p class="hint">Baca dengan suara anda — guru mendengar melalui kelas live.</p>
+      </div>
+    </div>
+
+    <div class="mushaf-frame" id="mushaf-frame">
+      <button type="button" class="mushaf-nav-btn" id="mushaf-page-prev" aria-label="Halaman sebelum" title="Halaman sebelum">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+      </button>
+
+      <div id="viewer-shell" class="viewer-shell">
+        <div class="mushaf-context-bar" aria-label="Maklumat halaman mushaf">
+          <span class="mushaf-ctx-item mushaf-ctx-juz" id="mushaf-ctx-juz">JUZ 1</span>
+          <span class="mushaf-ctx-item mushaf-ctx-page" id="mushaf-ctx-page">1</span>
+          <span class="mushaf-ctx-item mushaf-ctx-surah" id="mushaf-ctx-surah">1 AL-FATIHAH</span>
+        </div>
+        <div id="viewer-scale" class="viewer-scale">
+          <div id="mushaf-host" class="mushaf-host" aria-live="polite">
+            <p class="mushaf-loading">Memuatkan halaman mushaf…</p>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="mushaf-nav-btn" id="mushaf-page-next" aria-label="Halaman seterusnya" title="Halaman seterusnya">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </button>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span id="location-label">Lokasi: —</span>
+  </footer>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
