@@ -24,6 +24,8 @@ const DEFAULT_STATE = {
   webcamLayout: 'pip',
   webcamTeacher: false,
   webcamStudents: false,
+  activeReaderId: null,
+  activeReaderName: '',
 };
 
 const rooms = new Map();
@@ -52,13 +54,59 @@ app.use('/data', express.static(join(__dirname, 'data')));
 app.use((_req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
-    "frame-ancestors 'self' https://learn.alhelmi.com https://app.alhelmi.com https://alhelmi.com https://www.alhelmi.com",
+    "frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000 http://host.docker.internal:3000 https://learn.alhelmi.com https://app.alhelmi.com https://alhelmi.com https://www.alhelmi.com",
   );
   next();
 });
 
+app.get(['/', '/index.html'], (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.sendFile(join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/styles.css', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(join(__dirname, 'public', 'styles.css'));
+});
+
+app.get('/app.js', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(join(__dirname, 'public', 'app.js'));
+});
+
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'alhelmi-live-mushaf', renderer: 'svg-mushaf' });
+  res.json({ ok: true, service: 'alhelmi-live-mushaf', renderer: 'svg-mushaf', ui: 'ipad-compact-1' });
+});
+
+const SYNC_SECRET = process.env.MUSHAF_SYNC_SECRET || '';
+
+/** Dashboard / Moodle pushes active batch reader for turn queue sync */
+app.post('/api/room/:roomId/active-reader', express.json(), (req, res) => {
+  const roomId = String(req.params.roomId || '').trim();
+  if (!roomId) {
+    res.status(400).json({ error: 'roomId required' });
+    return;
+  }
+  if (SYNC_SECRET && req.get('x-mushaf-sync-key') !== SYNC_SECRET) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const activeReaderId = req.body?.activeReaderId ?? req.body?.active_reader_id ?? null;
+  const activeReaderName = String(
+    req.body?.activeReaderName ?? req.body?.active_reader_name ?? '',
+  ).trim();
+
+  const state = getRoom(roomId);
+  const next = {
+    ...state,
+    activeReaderId: activeReaderId === null || activeReaderId === '' ? null : String(activeReaderId),
+    activeReaderName,
+    updatedAt: Date.now(),
+  };
+  rooms.set(roomId, next);
+  io.to(roomId).emit('state', next);
+  res.json({ ok: true, roomId, activeReaderId: next.activeReaderId, activeReaderName: next.activeReaderName });
 });
 
 /** Proxy + cache SVG mushaf Medina (islamic.app) — paparan seperti cetakan */

@@ -2,6 +2,7 @@ const params = new URLSearchParams(window.location.search);
 const roomId = params.get('room') || 'demo';
 const roleParam = (params.get('role') || 'student').trim().toLowerCase();
 const role = roleParam === 'teacher' || roleParam === 'guru' ? 'teacher' : 'student';
+const viewerUserId = (params.get('userid') || params.get('userId') || '').trim();
 
 const ZOOM_KEY = 'alhelmi-mushaf-zoom';
 const MENU_COLLAPSED_KEY = 'alhelmi-mushaf-menu-collapsed';
@@ -83,7 +84,7 @@ async function init() {
     bindAyahClicks();
   } catch (error) {
     console.error('Init gagal:', error);
-    els.statusLabel.textContent = 'Ralat memuatkan kawalan — muat semula halaman';
+    els.statusLabel.textContent = 'Ralat memuatkan kawalan â€” muat semula halaman';
   }
 
   roomState = {
@@ -98,6 +99,8 @@ async function init() {
   webcamLayout: 'pip',
   webcamTeacher: false,
   webcamStudents: false,
+  activeReaderId: null,
+  activeReaderName: '',
 };
 
   updateZoomLabels();
@@ -126,7 +129,7 @@ function setMenuCollapsed(collapsed, { persist = true } = {}) {
     els.toggleMenu.title = collapsed ? 'Paparkan menu kawalan' : 'Sembunyikan menu kawalan';
   }
   if (els.toggleMenuLabel) {
-    els.toggleMenuLabel.textContent = collapsed ? 'Paparkan menu' : 'Sembunyikan menu';
+    els.toggleMenuLabel.textContent = collapsed ? 'Kawalan' : 'Sembunyi';
   }
   if (persist) {
     sessionStorage.setItem(MENU_COLLAPSED_KEY, collapsed ? '1' : '0');
@@ -138,9 +141,22 @@ function toggleMenu() {
 }
 
 function initMenuToggle() {
-  const collapsed = sessionStorage.getItem(MENU_COLLAPSED_KEY) === '1';
+  // The mushaf itself is the teaching surface. Start with controls tucked away
+  // unless the guru explicitly chose to keep them open in this browser tab.
+  const saved = sessionStorage.getItem(MENU_COLLAPSED_KEY);
+  const collapsed = saved === null ? true : saved === '1';
   setMenuCollapsed(collapsed, { persist: false });
   els.toggleMenu?.addEventListener('click', toggleMenu);
+
+  const moreBtn = document.getElementById('toolbar-more-btn');
+  const morePanel = document.getElementById('toolbar-more');
+  moreBtn?.addEventListener('click', () => {
+    if (!morePanel) return;
+    const open = morePanel.hasAttribute('hidden');
+    if (open) morePanel.removeAttribute('hidden');
+    else morePanel.setAttribute('hidden', '');
+    moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
 }
 
 function setConnectionStatus(connected) {
@@ -148,7 +164,7 @@ function setConnectionStatus(connected) {
     els.statusLabel.textContent = 'Disambung';
     els.statusLabel.classList.add('is-live');
   } else {
-    els.statusLabel.textContent = 'Terputus — cuba sambung semula…';
+    els.statusLabel.textContent = 'Terputus â€” cuba sambung semulaâ€¦';
     els.statusLabel.classList.remove('is-live');
   }
 }
@@ -360,7 +376,7 @@ function updateLocationLabel(page, svg = null) {
   if (els.mushafCtxSurah) els.mushafCtxSurah.textContent = formatSurahBadge(surah, surahName);
 
   if (els.locationLabel) {
-    els.locationLabel.textContent = `Lokasi: ${surahName} · Juzuk ${juz} · Hal. ${page}`;
+    els.locationLabel.textContent = `Lokasi: ${surahName} Â· Juzuk ${juz} Â· Hal. ${page}`;
   }
 }
 
@@ -742,16 +758,38 @@ function applyRoomState(state) {
 
   updateLocationLabel(state.page);
 
+  const activeReaderId = state.activeReaderId ? String(state.activeReaderId) : null;
+  const activeReaderName = state.activeReaderName || '';
+  const isActiveBatchReader =
+    role === 'student' && activeReaderId && viewerUserId && activeReaderId === viewerUserId;
+  const batchWaiting =
+    role === 'student' && activeReaderId && viewerUserId && activeReaderId !== viewerUserId;
+  const batchNoReaderYet = role === 'student' && !activeReaderId && viewerUserId;
+
   const studentShouldHide = role === 'student' && state.hidden;
 
   if (role === 'teacher') {
     els.hiddenScreen.hidden = true;
     els.viewerShell.hidden = false;
     if (els.mushafFrame) els.mushafFrame.hidden = false;
+    if (activeReaderName) {
+      els.statusLabel.textContent = `Pembaca aktif: ${activeReaderName}`;
+    }
+  } else if (batchWaiting || batchNoReaderYet) {
+    els.hiddenScreen.hidden = false;
+    els.viewerShell.hidden = true;
+    if (els.mushafFrame) els.mushafFrame.hidden = true;
+    els.hiddenScope.textContent = batchNoReaderYet
+      ? 'Menunggu giliran — guru akan memanggil pelajar seterusnya.'
+      : `${activeReaderName || 'Pelajar lain'} sedang membaca. Sila tunggu giliran anda.`;
+    return;
   } else {
     els.hiddenScreen.hidden = !studentShouldHide;
     els.viewerShell.hidden = studentShouldHide;
     if (els.mushafFrame) els.mushafFrame.hidden = studentShouldHide;
+    if (isActiveBatchReader && !studentShouldHide) {
+      els.statusLabel.textContent = 'Giliran anda — sila baca';
+    }
   }
 
   if (studentShouldHide) {
@@ -809,7 +847,7 @@ async function renderMushaf() {
 
   els.mushafHost.classList.add('is-loading');
   if (!hasVisibleSvg) {
-    els.mushafHost.innerHTML = '<p class="mushaf-loading">Memuatkan halaman mushaf…</p>';
+    els.mushafHost.innerHTML = '<p class="mushaf-loading">Memuatkan halaman mushafâ€¦</p>';
   }
 
   try {
@@ -833,14 +871,14 @@ async function renderMushaf() {
   }
 }
 
-const BISMILLAH_UTS = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
+const BISMILLAH_UTS = '\u0628\u0633\u0645 \u0627\u0644\u0644\u0647 \u0627\u0644\u0631\u062d\u0645\u0646 \u0627\u0644\u0631\u062d\u064a\u0645';
 const MUSHAF_BRAND_TITLE = 'AlHelmi Quran';
 const MUSHAF_PAGE_BG = '#e8f5e9';
 const MUSHAF_SURAH_BAND = '#b8ddb8';
 const MUSHAF_SURAH_BAND_STROKE = '#7aab8a';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** Buang header margin SVG — info sudah ada di bar teal (JUZ · hal · surah). */
+/** Buang header margin SVG â€” info sudah ada di bar teal (JUZ Â· hal Â· surah). */
 function stripSvgPageChrome(svg) {
   svg.querySelectorAll('text').forEach((node) => {
     const y = Number(node.getAttribute('y') || 0);
@@ -951,7 +989,7 @@ function enhanceSurahHeaders(svg, page) {
     tSep.setAttribute('font-size', '13');
     tSep.setAttribute('font-weight', '700');
     tSep.setAttribute('fill', '#5a8a6a');
-    tSep.textContent = '  ·  ';
+    tSep.textContent = '  Â·  ';
 
     const tArabic = svg.ownerDocument.createElementNS(SVG_NS, 'tspan');
     tArabic.setAttribute('class', 'alhelmi-surah-arabic');
@@ -970,23 +1008,22 @@ function enhanceSurahHeaders(svg, page) {
 
 /**
  * Al-Fatihah (halaman 1): asal SVG gabung Bismillah + ayat 2 pada satu baris.
- * Pisahkan seperti mushaf cetak — Bismillah atas sekali selepas tajuk surah.
+ * Pisahkan seperti mushaf cetak â€” Bismillah atas sekali selepas tajuk surah.
  */
 function fixBismillahLayout(svg, page) {
   if (page !== 1 || svg.querySelector('.alhelmi-bismillah')) return;
-  if (svg.querySelector('g > text:not([data-ayah])')?.textContent?.includes('بِسْم')) return;
 
   const ayah1 = svg.querySelector('tspan[data-ayah="1:1"]');
   const ayah2 = svg.querySelector('tspan[data-ayah="1:2"]');
   if (!ayah1 || !ayah2 || ayah1.closest('text') !== ayah2.closest('text')) return;
 
   const verseBlock = ayah1.closest('text');
-  const surahHeader = [...svg.querySelectorAll('text')].find(
-    (node) => node.textContent.includes('سورة') && !node.querySelector('[data-ayah]'),
-  );
-  if (!surahHeader || !verseBlock) return;
+  if (!verseBlock) return;
 
-  const bismGroup = buildBismillahGroup(svg.ownerDocument, { ayahKey: '1:1' });
+  const bismGroup = buildBismillahGroup(svg.ownerDocument, {
+    ayahKey: '1:1',
+    centerX: getSvgCenterX(svg),
+  });
   verseBlock.parentNode.insertBefore(bismGroup, verseBlock);
 
   ayah1.remove();
@@ -1000,42 +1037,58 @@ function fixBismillahLayout(svg, page) {
   growSvgCanvas(svg, shift);
 }
 
-function buildBismillahGroup(doc, { ayahKey } = {}) {
+function getSvgCenterX(svg) {
+  const vb = svg?.viewBox?.baseVal;
+  if (vb && Number.isFinite(vb.x) && Number.isFinite(vb.width) && vb.width > 0) {
+    return vb.x + vb.width / 2;
+  }
+  const widthAttr = Number(svg?.getAttribute('width') || 0);
+  if (Number.isFinite(widthAttr) && widthAttr > 0) return widthAttr / 2;
+  return 450;
+}
+
+function buildBismillahGroup(doc, { ayahKey, centerX = 450 } = {}) {
+  const leftLineX1 = centerX - 243;
+  const leftLineX2 = centerX - 215;
+  const leftDotX = centerX - 207;
+  const rightDotX = centerX + 207;
+  const rightLineX1 = centerX + 215;
+  const rightLineX2 = centerX + 243;
   const g = doc.createElementNS(SVG_NS, 'g');
   g.setAttribute('class', 'alhelmi-bismillah');
 
   const leftLine = doc.createElementNS(SVG_NS, 'line');
-  leftLine.setAttribute('x1', '207');
+  leftLine.setAttribute('x1', String(leftLineX1));
   leftLine.setAttribute('y1', '164.375');
-  leftLine.setAttribute('x2', '235');
+  leftLine.setAttribute('x2', String(leftLineX2));
   leftLine.setAttribute('y2', '164.375');
   leftLine.setAttribute('stroke', '#d4a574');
   leftLine.setAttribute('stroke-opacity', '0.55');
   leftLine.setAttribute('stroke-width', '0.8');
 
   const leftDot = doc.createElementNS(SVG_NS, 'circle');
-  leftDot.setAttribute('cx', '243');
+  leftDot.setAttribute('cx', String(leftDotX));
   leftDot.setAttribute('cy', '164.375');
   leftDot.setAttribute('r', '2.5');
   leftDot.setAttribute('fill', '#d4a574');
 
   const rightLine = doc.createElementNS(SVG_NS, 'line');
-  rightLine.setAttribute('x1', '665');
+  rightLine.setAttribute('x1', String(rightLineX1));
   rightLine.setAttribute('y1', '164.375');
-  rightLine.setAttribute('x2', '693');
+  rightLine.setAttribute('x2', String(rightLineX2));
   rightLine.setAttribute('y2', '164.375');
   rightLine.setAttribute('stroke', '#d4a574');
   rightLine.setAttribute('stroke-opacity', '0.55');
   rightLine.setAttribute('stroke-width', '0.8');
 
   const rightDot = doc.createElementNS(SVG_NS, 'circle');
-  rightDot.setAttribute('cx', '657');
+  rightDot.setAttribute('cx', String(rightDotX));
   rightDot.setAttribute('cy', '164.375');
   rightDot.setAttribute('r', '2.5');
   rightDot.setAttribute('fill', '#d4a574');
 
   const text = doc.createElementNS(SVG_NS, 'text');
-  text.setAttribute('x', '450');
+  text.setAttribute('x', String(centerX));
   text.setAttribute('y', '178.55');
   text.setAttribute('text-anchor', 'middle');
   text.setAttribute('direction', 'rtl');
@@ -1063,7 +1116,7 @@ function shiftSvgTextsDown(svg, fromText, shift) {
   }
 
   const footer = [...svg.querySelectorAll('text')].find(
-    (el) => el.getAttribute('fill') === '#998d77' && el.textContent.includes('—'),
+    (el) => el.getAttribute('fill') === '#998d77' && el.textContent.includes('â€”'),
   );
   if (footer) {
     footer.setAttribute('y', String(Number(footer.getAttribute('y')) + shift));
