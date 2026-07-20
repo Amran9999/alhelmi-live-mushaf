@@ -24,7 +24,9 @@
   --font: "Manrope", "Segoe UI", system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, serif;
   --transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-  --toolbar-h: 52px;
+  --toolbar-h: 40px;
+  --topbar-h: 44px;
+  --ctrl-h: 32px;
 }
 
 * {
@@ -57,8 +59,9 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
+  gap: 10px;
+  min-height: var(--topbar-h);
+  padding: 4px 12px;
   background: var(--bg-elevated);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
@@ -68,43 +71,51 @@ select {
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   background: linear-gradient(145deg, #0f6b4c, #1a8f66);
   color: white;
   font-weight: 700;
-  font-size: 0.72rem;
+  font-size: 0.65rem;
+  flex-shrink: 0;
 }
 
 .brand-title {
   font-family: var(--font-display), Georgia, serif;
-  font-size: 0.95rem;
+  font-size: 0.82rem;
   font-weight: 650;
   letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
 .meta {
   color: var(--text-muted);
-  font-size: 0.8rem;
-  margin-top: 2px;
+  font-size: 0.68rem;
+  margin-top: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(42vw, 280px);
 }
 
 .topbar-end {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .btn-menu-toggle {
-  padding: 8px 12px;
-  font-size: 0.8rem;
+  padding: 5px 10px;
+  font-size: 0.72rem;
   border-radius: var(--radius-full);
   background: var(--bg-muted);
   border-color: var(--border);
@@ -142,9 +153,9 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 }
 
 .status-pill {
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: 600;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: var(--radius-full);
   background: var(--bg-muted);
   color: var(--text-secondary);
@@ -158,9 +169,9 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 }
 
 .role-badge {
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  padding: 6px 12px;
+  padding: 4px 9px;
   border-radius: var(--radius-full);
   background: var(--text);
   color: white;
@@ -190,18 +201,18 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 
 .role-teacher #teacher-toolbar {
   position: sticky;
-  top: var(--topbar-height, 52px);
+  top: var(--topbar-height, var(--topbar-h));
   z-index: 30;
-  background: rgba(245, 245, 247, 0.86);
+  background: rgba(245, 245, 247, 0.92);
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
   border-bottom: 1px solid var(--border);
-  max-height: 220px;
+  max-height: 96px;
   overflow: visible;
   transition:
-    max-height 0.32s var(--transition),
-    opacity 0.24s ease,
-    border-color 0.24s ease;
+    max-height 0.28s var(--transition),
+    opacity 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .role-teacher.menu-collapsed #teacher-toolbar {
@@ -218,25 +229,29 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 
 .toolbar-compact {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-height: var(--toolbar-h);
-  padding: 8px 12px;
+  padding: 5px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .toolbar-rule {
   width: 1px;
-  height: 22px;
+  height: 18px;
   background: var(--border-strong);
   flex-shrink: 0;
 }
 
 .toolbar-nav-slot {
   position: relative;
-  flex: 1 1 160px;
-  min-width: 140px;
-  max-width: 280px;
+  flex: 0 1 150px;
+  min-width: 110px;
+  max-width: 200px;
 }
 
 .nav-panel-inline {
@@ -245,33 +260,69 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 
 .nav-panel-inline .search-input-wrap,
 .nav-panel-inline .page-stepper {
-  min-height: 36px;
+  min-height: var(--ctrl-h);
+  height: var(--ctrl-h);
+}
+
+.nav-panel-inline .page-stepper {
+  gap: 4px;
+}
+
+.nav-panel-inline .page-stepper .btn-icon {
+  width: var(--ctrl-h);
+  height: var(--ctrl-h);
+  min-height: var(--ctrl-h);
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.nav-panel-inline .page-input {
+  width: 56px;
+  min-height: var(--ctrl-h);
+  height: var(--ctrl-h);
+  font-size: 0.8125rem;
+  border-radius: 8px;
+  padding: 0 4px;
 }
 
 .nav-panel-inline .search-input {
-  padding-top: 8px;
-  padding-bottom: 8px;
-  font-size: 0.8125rem;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 0.75rem;
+  min-height: var(--ctrl-h);
+  height: var(--ctrl-h);
 }
 
+/* Must come after .seg so width:auto wins (same specificity) */
+.toolbar-compact .seg,
 .seg-compact {
-  width: auto;
+  width: auto !important;
+  max-width: none;
   flex: 0 0 auto;
-  padding: 3px;
+  margin: 0;
+  padding: 2px;
   border-radius: var(--radius-full);
   background: rgba(0, 0, 0, 0.05);
   border: none;
 }
 
+.toolbar-compact .seg-tabs,
+.seg-compact.seg-tabs {
+  margin-bottom: 0 !important;
+}
+
+.toolbar-compact .seg-btn,
 .seg-compact .seg-btn {
   flex: 0 0 auto;
-  padding: 6px 12px;
-  font-size: 0.75rem;
+  padding: 4px 10px;
+  font-size: 0.7rem;
   font-weight: 650;
   border-radius: var(--radius-full);
   white-space: nowrap;
+  line-height: 1.2;
 }
 
+.toolbar-compact .seg-btn.active,
 .seg-compact .seg-btn.active {
   background: #1d1d1f;
   color: #fff;
@@ -282,11 +333,18 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   display: none;
 }
 
-.btn-go-compact {
-  padding: 8px 14px;
-  font-size: 0.75rem;
+.btn-go-compact,
+.toolbar-compact .btn-go {
+  width: auto !important;
+  min-height: var(--ctrl-h);
+  height: var(--ctrl-h);
+  margin-top: 0 !important;
+  padding: 0 12px;
+  font-size: 0.7rem;
   border-radius: var(--radius-full);
   white-space: nowrap;
+  box-shadow: none;
+  flex: 0 0 auto;
 }
 
 .btn-go-compact svg {
@@ -294,42 +352,50 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 }
 
 .btn-compact {
-  padding: 7px 12px;
-  font-size: 0.72rem;
+  padding: 0 10px;
+  min-height: var(--ctrl-h);
+  height: var(--ctrl-h);
+  font-size: 0.68rem;
   border-radius: var(--radius-full);
   white-space: nowrap;
 }
 
+.btn-group-compact {
+  flex-shrink: 0;
+}
+
 .btn-group-compact .btn-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: var(--ctrl-h);
+  height: var(--ctrl-h);
+  border-radius: 8px;
+  font-size: 1rem;
 }
 
 .btn-group-compact .value-chip {
-  min-width: 52px;
-  font-size: 0.7rem;
-  padding: 4px 8px;
+  min-width: 44px;
+  font-size: 0.65rem;
+  padding: 2px 6px;
 }
 
 .btn-group-compact .value-chip-wide {
-  min-width: 72px;
+  min-width: 64px;
 }
 
 .toggle-compact {
-  gap: 6px;
+  gap: 5px;
+  flex-shrink: 0;
 }
 
 .toggle-compact .toggle-text {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 .toolbar-more {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 0 12px 10px;
+  gap: 8px;
+  padding: 6px 10px 8px;
   border-top: 1px solid var(--border);
 }
 
@@ -901,6 +967,32 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   color: var(--text-muted);
 }
 
+.student-bar .seg.is-locked {
+  opacity: 0.95;
+}
+
+.student-bar .seg.is-locked .seg-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.student-bar .btn-group.is-disabled {
+  opacity: 0.55;
+}
+
+.role-student.student-follow .mushaf-nav-btn {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.role-student.student-turn-locked #student-follow-seg::after {
+  content: "Kunci giliran";
+  margin-inline-start: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-hover);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -1027,6 +1119,10 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 
 .role-student .mushaf-nav-btn {
   display: none;
+}
+
+.role-student.student-free .mushaf-nav-btn {
+  display: grid;
 }
 
 .role-student .mushaf-frame {
@@ -1168,11 +1264,17 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 /* ——— Responsive ——— */
 @media (max-width: 1024px) {
   .toolbar-compact {
-    gap: 6px;
+    gap: 5px;
   }
 
   .toolbar-rule {
     display: none;
+  }
+
+  .toolbar-compact .btn-warning {
+    max-width: 9.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -1180,12 +1282,12 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   .mushaf-context-bar {
     grid-template-columns: auto 1fr auto;
     gap: 8px;
-    padding: 10px 12px;
-    font-size: 0.68rem;
+    padding: 8px 10px;
+    font-size: 0.65rem;
   }
 
   .mushaf-ctx-page {
-    font-size: 1rem;
+    font-size: 0.9rem;
     padding: 2px 8px;
   }
 
@@ -1194,7 +1296,7 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   }
 
   .viewer-scale {
-    max-height: calc(100vh - 180px);
+    max-height: calc(100vh - 140px);
     padding: 8px;
   }
 
@@ -1203,8 +1305,8 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   }
 
   .btn-menu-toggle {
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
     padding: 0;
     border-radius: 50%;
   }
@@ -1215,13 +1317,13 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   }
 
   .mushaf-nav-btn {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
   }
 
   .mushaf-nav-btn svg {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
   }
 
   .juz-grid-compact {
@@ -1229,11 +1331,15 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   }
 
   .topbar {
-    padding: 8px 12px;
+    padding: 4px 10px;
   }
 
   .toggle-compact .toggle-text {
     display: none;
+  }
+
+  .role-teacher #teacher-toolbar {
+    max-height: 56px;
   }
 
   .role-student .student-bar::after {
@@ -1244,4 +1350,92 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
     color: var(--text-muted);
     margin-top: 4px;
   }
+}
+
+/* ——— Final compact overrides (must stay last) ——— */
+.topbar {
+  min-height: 40px;
+  padding: 2px 10px;
+}
+
+.brand > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brand-title {
+  font-size: 0.8rem;
+}
+
+.meta {
+  margin-top: 0;
+  font-size: 0.65rem;
+}
+
+.toolbar-compact .search-input,
+.nav-panel-inline .search-input {
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 0 10px 0 32px !important;
+  font-size: 0.72rem !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.toolbar-compact .search-icon,
+.nav-panel-inline .search-icon {
+  left: 10px;
+  width: 14px;
+  height: 14px;
+}
+
+.toolbar-compact .btn-group {
+  padding: 2px;
+  gap: 4px;
+  border-radius: 8px;
+}
+
+.toolbar-compact .btn-icon,
+.toolbar-compact .btn-group .btn-icon {
+  width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  font-size: 0.95rem;
+  border-radius: 7px;
+}
+
+.toolbar-compact .value-chip {
+  font-size: 0.62rem !important;
+  min-width: 40px;
+  line-height: 1.1;
+  padding: 0 2px;
+}
+
+.toolbar-compact .seg-btn {
+  padding: 3px 9px !important;
+  font-size: 0.68rem !important;
+}
+
+.toolbar-compact .btn-go,
+.toolbar-compact .btn-compact {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 10px !important;
+  font-size: 0.68rem !important;
+}
+
+.toolbar-compact {
+  min-height: 36px;
+  padding: 3px 8px;
+  gap: 5px;
+}
+
+.role-teacher #teacher-toolbar {
+  max-height: 48px;
+}
+
+.role-teacher #teacher-toolbar:has(.toolbar-more:not([hidden])) {
+  max-height: 96px;
 }

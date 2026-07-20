@@ -5,6 +5,7 @@ const role = roleParam === 'teacher' || roleParam === 'guru' ? 'teacher' : 'stud
 const viewerUserId = (params.get('userid') || params.get('userId') || '').trim();
 
 const ZOOM_KEY = 'alhelmi-mushaf-zoom';
+const FOLLOW_KEY = `alhelmi-mushaf-follow:${roomId}`;
 const MENU_COLLAPSED_KEY = 'alhelmi-mushaf-menu-collapsed';
 const ZOOM_MIN = 70;
 const ZOOM_MAX = 180;
@@ -42,6 +43,12 @@ const els = {
   studentZoomLabel: document.getElementById('student-zoom-label'),
   pageLabel: document.getElementById('page-label'),
   studentModeLabel: document.getElementById('student-mode-label'),
+  studentPageLabel: document.getElementById('student-page-label'),
+  studentHint: document.getElementById('student-hint'),
+  studentFollowSeg: document.getElementById('student-follow-seg'),
+  studentModeFree: document.getElementById('student-mode-free'),
+  studentModeFollow: document.getElementById('student-mode-follow'),
+  studentPageNav: document.getElementById('student-page-nav'),
   syncZoom: document.getElementById('sync-zoom'),
   toggleHide: document.getElementById('toggle-hide'),
   webcamTeacher: document.getElementById('webcam-teacher'),
@@ -58,6 +65,10 @@ let selectedJuz = 1;
 let surahDropdownIndex = -1;
 let roomState = null;
 let studentZoom = Number(localStorage.getItem(ZOOM_KEY)) || STUDENT_DEFAULT_ZOOM;
+/** Pelajar bebas by default; “Ikut guru” disimpan per bilik. */
+let studentFollowTeacher = localStorage.getItem(FOLLOW_KEY) === '1';
+let studentLocalPage = 1;
+let wasActiveReader = false;
 let renderToken = 0;
 let lastRenderedPage = null;
 let renderInFlightForPage = null;
@@ -501,6 +512,112 @@ function bindUi() {
     document.getElementById('student-zoom-in').addEventListener('click', () => changeStudentZoom(ZOOM_STEP));
     document.getElementById('student-zoom-out').addEventListener('click', () => changeStudentZoom(-ZOOM_STEP));
     document.getElementById('student-fullscreen')?.addEventListener('click', toggleFullscreen);
+    els.studentModeFree?.addEventListener('click', () => setStudentFollow(false));
+    els.studentModeFollow?.addEventListener('click', () => setStudentFollow(true));
+    document.getElementById('student-page-prev')?.addEventListener('click', () => changePage(-1));
+    document.getElementById('student-page-next')?.addEventListener('click', () => changePage(1));
+    document.getElementById('mushaf-page-prev')?.addEventListener('click', () => changePage(-1));
+    document.getElementById('mushaf-page-next')?.addEventListener('click', () => changePage(1));
+    bindPagePrefetch('student-page-prev', -1);
+    bindPagePrefetch('student-page-next', 1);
+    bindPagePrefetch('mushaf-page-prev', -1);
+    bindPagePrefetch('mushaf-page-next', 1);
+    document.addEventListener('keydown', (event) => {
+      if (event.target.closest('input, textarea, select')) return;
+      if (isStudentTurnLocked() || isStudentFollowing()) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        changePage(-1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        changePage(1);
+      }
+    });
+    updateStudentFollowUi();
+  }
+}
+
+/** Giliran aktif: kunci ikut guru sahaja. */
+function isStudentTurnLocked() {
+  if (role !== 'student' || !viewerUserId || !roomState) return false;
+  const activeReaderId = roomState.activeReaderId ? String(roomState.activeReaderId) : null;
+  return Boolean(activeReaderId && activeReaderId === viewerUserId);
+}
+
+/** Ikut halaman/highlight guru (pilihan atau dikunci). */
+function isStudentFollowing() {
+  if (role !== 'student') return false;
+  return isStudentTurnLocked() || studentFollowTeacher;
+}
+
+function getEffectivePage() {
+  if (!roomState) return 1;
+  if (role === 'teacher' || isStudentFollowing()) return roomState.page || 1;
+  return studentLocalPage || roomState.page || 1;
+}
+
+function setStudentFollow(follow) {
+  if (role !== 'student') return;
+  if (isStudentTurnLocked()) {
+    studentFollowTeacher = true;
+    updateStudentFollowUi();
+    return;
+  }
+  studentFollowTeacher = Boolean(follow);
+  localStorage.setItem(FOLLOW_KEY, studentFollowTeacher ? '1' : '0');
+  if (studentFollowTeacher && roomState?.page) {
+    studentLocalPage = roomState.page;
+  }
+  updateStudentFollowUi();
+  renderMushaf();
+}
+
+function updateStudentFollowUi() {
+  if (role !== 'student') return;
+  const locked = isStudentTurnLocked();
+  const following = isStudentFollowing();
+  const page = getEffectivePage();
+
+  els.studentModeFree?.classList.toggle('active', !following);
+  els.studentModeFollow?.classList.toggle('active', following);
+  els.studentModeFree && (els.studentModeFree.disabled = locked);
+  els.studentModeFollow && (els.studentModeFollow.disabled = locked);
+  els.studentFollowSeg?.classList.toggle('is-locked', locked);
+  els.studentPageNav?.classList.toggle('is-disabled', following);
+  document.getElementById('student-page-prev') &&
+    (document.getElementById('student-page-prev').disabled = following || page <= 1);
+  document.getElementById('student-page-next') &&
+    (document.getElementById('student-page-next').disabled = following || page >= 604);
+  if (els.studentPageLabel) els.studentPageLabel.textContent = `${page} / 604`;
+
+  document.body.classList.toggle('student-follow', following);
+  document.body.classList.toggle('student-free', !following);
+  document.body.classList.toggle('student-turn-locked', locked);
+
+  updatePageNavButtons(page);
+
+  ['mushaf-page-prev', 'mushaf-page-next', 'student-page-prev', 'student-page-next'].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    if (following) {
+      btn.disabled = true;
+      return;
+    }
+    if (id.includes('prev')) btn.disabled = page <= 1;
+    else btn.disabled = page >= 604;
+  });
+
+  if (els.studentHint) {
+    if (locked) {
+      els.studentHint.textContent =
+        'Giliran anda — mushaf dikunci ikut guru sehingga giliran tamat.';
+    } else if (following) {
+      els.studentHint.textContent =
+        'Mengikut halaman guru. Tukar ke “Baca sendiri” untuk navigasi bebas.';
+    } else {
+      els.studentHint.textContent =
+        'Baca sendiri — pilih “Ikut guru” jika mahu ikut halaman kelas.';
+    }
   }
 }
 
@@ -611,15 +728,23 @@ function goNavigation() {
 }
 
 function changePage(delta) {
-  const page = Math.min(604, Math.max(1, (roomState?.page || 1) + delta));
-  if (roomState) roomState.page = page;
-  if (role === 'teacher') {
-    els.pageLabel.textContent = `Halaman ${page} / 604`;
-    syncNavControlsToPage(page);
-    updatePageNavButtons(page);
+  if (role === 'student') {
+    if (isStudentTurnLocked() || isStudentFollowing()) return;
+    const page = Math.min(604, Math.max(1, getEffectivePage() + delta));
+    studentLocalPage = page;
+    updateStudentFollowUi();
     updateLocationLabel(page);
     renderMushaf();
+    return;
   }
+
+  const page = Math.min(604, Math.max(1, (roomState?.page || 1) + delta));
+  if (roomState) roomState.page = page;
+  els.pageLabel.textContent = `Halaman ${page} / 604`;
+  syncNavControlsToPage(page);
+  updatePageNavButtons(page);
+  updateLocationLabel(page);
+  renderMushaf();
   teacherPatch({ page });
 }
 
@@ -680,11 +805,11 @@ function bindPagePrefetch(buttonId, delta) {
   const btn = document.getElementById(buttonId);
   if (!btn) return;
   btn.addEventListener('mouseenter', () => {
-    const target = (roomState?.page || 1) + delta;
+    const target = getEffectivePage() + delta;
     prefetchPage(target);
   });
   btn.addEventListener('focus', () => {
-    const target = (roomState?.page || 1) + delta;
+    const target = getEffectivePage() + delta;
     prefetchPage(target);
   });
 }
@@ -739,6 +864,30 @@ function applyRoomState(state) {
   }
   roomState = state;
 
+  const activeReaderId = state.activeReaderId ? String(state.activeReaderId) : null;
+  const activeReaderName = state.activeReaderName || '';
+  const isActiveBatchReader =
+    role === 'student' && activeReaderId && viewerUserId && activeReaderId === viewerUserId;
+  const batchWaiting =
+    role === 'student' && activeReaderId && viewerUserId && activeReaderId !== viewerUserId;
+  const batchNoReaderYet = role === 'student' && !activeReaderId && viewerUserId;
+
+  if (role === 'student') {
+    if (isActiveBatchReader && !wasActiveReader) {
+      // Giliran bermula → kunci ikut guru
+      studentFollowTeacher = true;
+    } else if (!isActiveBatchReader && wasActiveReader) {
+      // Giliran tamat → bebaskan semula
+      studentFollowTeacher = false;
+      localStorage.setItem(FOLLOW_KEY, '0');
+    }
+    wasActiveReader = isActiveBatchReader;
+
+    if (isStudentFollowing() && state.page) {
+      studentLocalPage = state.page;
+    }
+  }
+
   if (role === 'teacher') {
     document.querySelectorAll('[data-mode]').forEach((btn) => {
       btn.classList.toggle('active', btn.getAttribute('data-mode') === state.mode);
@@ -754,18 +903,13 @@ function applyRoomState(state) {
     syncWebcamControls(state);
   } else {
     els.studentModeLabel.textContent = `Mod: ${modeLabels[state.mode] || state.mode}`;
+    updateStudentFollowUi();
   }
 
-  updateLocationLabel(state.page);
+  const displayPage = getEffectivePage();
+  updateLocationLabel(displayPage);
 
-  const activeReaderId = state.activeReaderId ? String(state.activeReaderId) : null;
-  const activeReaderName = state.activeReaderName || '';
-  const isActiveBatchReader =
-    role === 'student' && activeReaderId && viewerUserId && activeReaderId === viewerUserId;
-  const batchWaiting =
-    role === 'student' && activeReaderId && viewerUserId && activeReaderId !== viewerUserId;
-  const batchNoReaderYet = role === 'student' && !activeReaderId && viewerUserId;
-
+  // Default: tunjuk mushaf kepada semua pelajar. Sembunyi hanya bila guru tekan toggle.
   const studentShouldHide = role === 'student' && state.hidden;
 
   if (role === 'teacher') {
@@ -775,39 +919,41 @@ function applyRoomState(state) {
     if (activeReaderName) {
       els.statusLabel.textContent = `Pembaca aktif: ${activeReaderName}`;
     }
-  } else if (batchWaiting || batchNoReaderYet) {
-    els.hiddenScreen.hidden = false;
-    els.viewerShell.hidden = true;
-    if (els.mushafFrame) els.mushafFrame.hidden = true;
-    els.hiddenScope.textContent = batchNoReaderYet
-      ? 'Menunggu giliran — guru akan memanggil pelajar seterusnya.'
-      : `${activeReaderName || 'Pelajar lain'} sedang membaca. Sila tunggu giliran anda.`;
-    return;
   } else {
     els.hiddenScreen.hidden = !studentShouldHide;
     els.viewerShell.hidden = studentShouldHide;
     if (els.mushafFrame) els.mushafFrame.hidden = studentShouldHide;
     if (isActiveBatchReader && !studentShouldHide) {
-      els.statusLabel.textContent = 'Giliran anda — sila baca';
+      els.statusLabel.textContent = 'Giliran anda — sila baca (mushaf dikunci ikut guru)';
+    } else if (batchNoReaderYet && !studentShouldHide) {
+      els.statusLabel.textContent = isStudentFollowing()
+        ? 'Mengikut guru — atau tukar ke Baca sendiri.'
+        : 'Baca sendiri — atau pilih Ikut guru.';
+    } else if (batchWaiting && !studentShouldHide) {
+      els.statusLabel.textContent = isStudentFollowing()
+        ? `${activeReaderName || 'Pelajar lain'} membaca — anda ikut guru.`
+        : `${activeReaderName || 'Pelajar lain'} sedang membaca. Anda bebas navigasi.`;
     }
   }
 
   if (studentShouldHide) {
-    els.hiddenScope.textContent = state.scopeLabel || 'Mushaf disembunyikan oleh guru.';
+    els.hiddenScope.textContent =
+      state.scopeLabel ||
+      'Guru menyembunyikan mushaf (contoh: ujian hafazan). Minta guru tekan “Tunjukkan mushaf pelajar” untuk ikut bacaan.';
     return;
   }
 
   const svg = els.mushafHost.querySelector('.mushaf-svg');
-  const pageChanged = state.page !== lastRenderedPage;
+  const pageChanged = displayPage !== lastRenderedPage;
 
-  if ((pageChanged || !svg) && renderInFlightForPage !== state.page) {
+  if ((pageChanged || !svg) && renderInFlightForPage !== displayPage) {
     renderMushaf();
     return;
   }
 
   applyZoomTransform();
   applyAyahHighlights();
-  updateLocationLabel(state.page, svg);
+  updateLocationLabel(displayPage, svg);
 }
 
 function applyZoomTransform() {
@@ -833,7 +979,7 @@ function applyZoomTransform() {
 async function renderMushaf() {
   if (!roomState) return;
 
-  const page = roomState.page;
+  const page = getEffectivePage();
   const token = ++renderToken;
   renderInFlightForPage = page;
   const hasCachedSvg = pageSvgCache.has(page);
@@ -1187,6 +1333,9 @@ function applyAyahHighlights() {
     node.classList.remove('ayah-highlight');
   });
   host.querySelectorAll('.ayah-highlight-bg').forEach((node) => node.remove());
+
+  // Bebas baca: jangan paksa highlight guru
+  if (role === 'student' && !isStudentFollowing()) return;
 
   const keys = getHighlightedAyahKeys();
   if (!svg || !keys.size) return;

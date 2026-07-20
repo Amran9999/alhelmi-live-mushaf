@@ -75,7 +75,7 @@ app.get('/app.js', (_req, res) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'alhelmi-live-mushaf', renderer: 'svg-mushaf', ui: 'ipad-compact-1' });
+  res.json({ ok: true, service: 'alhelmi-live-mushaf', renderer: 'svg-mushaf', ui: 'toolbar-slim-3' });
 });
 
 const SYNC_SECRET = process.env.MUSHAF_SYNC_SECRET || '';
@@ -177,10 +177,8 @@ io.on('connection', (socket) => {
     const state = getRoom(currentRoom);
     const next = { ...state, ...patch, updatedAt: Date.now() };
 
-    if (patch.mode === 'hafazan' && patch.hidden === undefined) {
-      next.hidden = true;
-    }
-    if (patch.mode === 'bacaan' && patch.hidden === undefined) {
+    // Bacaan = sentiasa tunjuk mushaf. Hafazan = guru kawalan via toggle hide (tiada auto-hide).
+    if (patch.mode === 'bacaan') {
       next.hidden = false;
     }
 
