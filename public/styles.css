@@ -1203,6 +1203,94 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   padding: 10px 12px;
 }
 
+/* ——— Class gate (?room= tanpa token) ——— */
+.class-gate {
+  width: min(100%, 520px);
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  margin: 0 auto;
+}
+
+.class-gate-card {
+  text-align: center;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 40px 32px;
+  width: 100%;
+  border: 1px solid var(--border);
+}
+
+.class-gate-kicker {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.class-gate-card h1 {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.class-gate-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.class-gate-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: background var(--transition);
+}
+
+.class-gate-cta:hover {
+  background: var(--accent-hover);
+}
+
+.class-gate-hint {
+  margin-top: 16px !important;
+  font-size: 0.8rem;
+  color: var(--text-muted) !important;
+}
+
+body.class-gate-active .toolbar,
+body.class-gate-active .teacher-only,
+body.class-gate-active .student-only,
+body.class-gate-active #mushaf-frame,
+body.class-gate-active .btn-menu-toggle {
+  display: none !important;
+}
+
+body.class-gate-active .stage {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - var(--topbar-h) - 48px);
+}
+
+.class-gate[hidden] {
+  display: none !important;
+}
+
 /* ——— Hidden hafazan ——— */
 .hidden-screen {
   width: min(100%, 480px);

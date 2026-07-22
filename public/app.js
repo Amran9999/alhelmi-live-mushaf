@@ -1,7 +1,10 @@
 const params = new URLSearchParams(window.location.search);
 const accessToken = (params.get('token') || '').trim();
+/** Intent bilik dari query — tanpa JWT jangan load shell kelas (OWASP A01). */
+const requestedRoom = (params.get('room') || '').trim();
+const classGateRequired = Boolean(requestedRoom) && !accessToken;
 /** Room/role dari query hanya untuk paparan awal; autoriti sebenar dari JWT (server). */
-let roomId = params.get('room') || 'demo';
+let roomId = requestedRoom || 'demo';
 let role = 'student';
 let viewerUserId = (params.get('userid') || params.get('userId') || '').trim();
 
@@ -32,6 +35,7 @@ const els = {
   mushafCtxPage: document.getElementById('mushaf-ctx-page'),
   mushafCtxSurah: document.getElementById('mushaf-ctx-surah'),
   statusLabel: document.getElementById('status-label'),
+  classGate: document.getElementById('class-gate'),
   surahSearch: document.getElementById('surah-search'),
   surahResults: document.getElementById('surah-results'),
   surahCombo: document.getElementById('surah-combo'),
@@ -76,13 +80,32 @@ let renderInFlightForPage = null;
 const pageSvgCache = new Map();
 const PAGE_CACHE_MAX = 30;
 
-const socket = io();
+/** Jangan auto-connect bila gate aktif — elak probe Socket.IO tanpa token. */
+const socket = io({ autoConnect: false });
 const modeLabels = {
   bacaan: 'Bacaan',
   hafazan: 'Hafazan',
 };
 
 init();
+
+/** UI sahaja bila ?room= tanpa token — tiada toolbar/sync/socket join. */
+function activateClassGate() {
+  document.body.classList.add('class-gate-active', 'role-student');
+  document.body.classList.remove('role-teacher');
+
+  if (els.classGate) els.classGate.hidden = false;
+  if (els.mushafFrame) els.mushafFrame.hidden = true;
+  if (els.teacherToolbar) els.teacherToolbar.hidden = true;
+  if (els.studentToolbar) els.studentToolbar.hidden = true;
+  if (els.hiddenScreen) els.hiddenScreen.hidden = true;
+
+  // Jangan dedah nama bilik (kurangkan recon / ISO A.8.11).
+  if (els.roomLabel) els.roomLabel.textContent = 'Bilik kelas';
+  if (els.roleLabel) els.roleLabel.textContent = 'Akses terhad';
+  if (els.statusLabel) els.statusLabel.textContent = 'Token diperlukan';
+  if (els.locationLabel) els.locationLabel.textContent = 'Buka melalui app.alhelmi.com';
+}
 
 function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
   roomId = String(nextRoom || roomId);
@@ -102,6 +125,11 @@ function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
 }
 
 async function init() {
+  if (classGateRequired) {
+    activateClassGate();
+    return;
+  }
+
   els.roomLabel.textContent = accessToken ? 'Bilik: …' : `Bilik: ${roomId}`;
   els.roleLabel.textContent = 'Menyambung…';
   document.body.classList.add('role-student');
@@ -157,6 +185,7 @@ async function init() {
   });
   socket.on('disconnect', () => setConnectionStatus(false));
 
+  socket.connect();
   socket.emit('join', {
     token: accessToken || undefined,
     roomId: accessToken ? undefined : roomId,

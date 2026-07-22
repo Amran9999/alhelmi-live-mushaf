@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Fraunces:opsz,wght@9..144,560;9..144,650&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=student-follow-1" />
+  <link rel="stylesheet" href="/styles.css?v=p3-room-gate-1" />
 </head>
 <body>
   <header class="topbar">
@@ -158,6 +158,20 @@
   </section>
 
   <main class="stage">
+    <!-- OWASP A01 / ISO A.5.15: bilik kelas tanpa JWT — tiada shell sync -->
+    <div id="class-gate" class="class-gate" hidden>
+      <div class="class-gate-card" role="alertdialog" aria-labelledby="class-gate-title" aria-describedby="class-gate-desc">
+        <p class="class-gate-kicker">Akses terhad</p>
+        <h1 id="class-gate-title">Buka dari portal AlHelmi</h1>
+        <p id="class-gate-desc">
+          Sesi mushaf kelas memerlukan token bertandatangan selepas log masuk.
+          Pautan bilik terus tanpa token tidak dibenarkan.
+        </p>
+        <a class="class-gate-cta" href="https://app.alhelmi.com/">Buka app.alhelmi.com</a>
+        <p class="class-gate-hint">Jika anda pelajar atau guru, masuk kelas dari dashboard — jangan kongsi URL bilik mentah.</p>
+      </div>
+    </div>
+
     <div id="hidden-screen" class="hidden-screen" hidden>
       <div class="hidden-card">
         <div class="hidden-icon" aria-hidden="true">🔒</div>
@@ -196,6 +210,6 @@
   </footer>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/app.js?v=p0-jwt-3"></script>
+  <script type="module" src="/app.js?v=p3-room-gate-1"></script>
 </body>
 </html>
