@@ -17,25 +17,42 @@ const SVG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = resolveMushafJwtSecret();
 const SYNC_SECRET = (process.env.MUSHAF_SYNC_SECRET || '').trim();
-const ALLOWED_FRAME_ANCESTORS = [
-  "'self'",
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://host.docker.internal:3000',
-  'https://learn.alhelmi.com',
-  'https://app.alhelmi.com',
-  'https://alhelmi.com',
-  'https://www.alhelmi.com',
-].join(' ');
-const ALLOWED_SOCKET_ORIGINS = [
-  'https://app.alhelmi.com',
-  'https://quran.alhelmi.com',
-  'https://learn.alhelmi.com',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:3090',
-  'http://127.0.0.1:3090',
-];
+/** Prod: HTTPS parents only (AH-09 — no localhost HTTP in frame-ancestors). */
+const ALLOWED_FRAME_ANCESTORS = (
+  IS_PROD
+    ? [
+        "'self'",
+        'https://learn.alhelmi.com',
+        'https://app.alhelmi.com',
+        'https://alhelmi.com',
+        'https://www.alhelmi.com',
+      ]
+    : [
+        "'self'",
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://host.docker.internal:3000',
+        'https://learn.alhelmi.com',
+        'https://app.alhelmi.com',
+        'https://alhelmi.com',
+        'https://www.alhelmi.com',
+      ]
+).join(' ');
+const ALLOWED_SOCKET_ORIGINS = IS_PROD
+  ? [
+      'https://app.alhelmi.com',
+      'https://quran.alhelmi.com',
+      'https://learn.alhelmi.com',
+    ]
+  : [
+      'https://app.alhelmi.com',
+      'https://quran.alhelmi.com',
+      'https://learn.alhelmi.com',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:3090',
+      'http://127.0.0.1:3090',
+    ];
 
 const DEFAULT_STATE = {
   mode: 'bacaan',
