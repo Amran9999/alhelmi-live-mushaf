@@ -74,9 +74,25 @@ function securityHeaders(_req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  // Webcam UI flags sync to parent Jitsi — no getUserMedia on this origin.
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), display-capture=()',
+  );
+  // Staged CSP: same-origin Socket.IO + Google Fonts used by public/index.html.
   res.setHeader(
     'Content-Security-Policy',
-    `frame-ancestors ${ALLOWED_FRAME_ANCESTORS}; object-src 'none'; base-uri 'self'`,
+    [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob:",
+      "connect-src 'self' ws: wss:",
+      `frame-ancestors ${ALLOWED_FRAME_ANCESTORS}`,
+    ].join('; '),
   );
   if (IS_PROD) {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
