@@ -3,12 +3,39 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import {
+  assertMushafClaims,
+  resolveMushafJwtSecret,
+  verifyHs256Jwt,
+} from './jwt.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3090;
 const MUSHAF_UPSTREAM = 'https://api.islamic.app/v1/mushaf';
 const MUSHAF_BRAND_TITLE = 'AlHelmi Quran';
 const SVG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const IS_PROD = process.env.NODE_ENV === 'production';
+const JWT_SECRET = resolveMushafJwtSecret();
+const SYNC_SECRET = (process.env.MUSHAF_SYNC_SECRET || '').trim();
+const ALLOWED_FRAME_ANCESTORS = [
+  "'self'",
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://host.docker.internal:3000',
+  'https://learn.alhelmi.com',
+  'https://app.alhelmi.com',
+  'https://alhelmi.com',
+  'https://www.alhelmi.com',
+].join(' ');
+const ALLOWED_SOCKET_ORIGINS = [
+  'https://app.alhelmi.com',
+  'https://quran.alhelmi.com',
+  'https://learn.alhelmi.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3090',
+  'http://127.0.0.1:3090',
+];
 
 const DEFAULT_STATE = {
   mode: 'bacaan',
@@ -42,22 +69,76 @@ function getRoom(roomId) {
   return rooms.get(roomId);
 }
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: '*' },
-});
-
-app.use(express.static(join(__dirname, 'public')));
-app.use('/data', express.static(join(__dirname, 'data')));
-
-app.use((_req, res, next) => {
+function securityHeaders(_req, res, next) {
+  res.removeHeader('X-Powered-By');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader(
     'Content-Security-Policy',
-    "frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000 http://host.docker.internal:3000 https://learn.alhelmi.com https://app.alhelmi.com https://alhelmi.com https://www.alhelmi.com",
+    `frame-ancestors ${ALLOWED_FRAME_ANCESTORS}; object-src 'none'; base-uri 'self'`,
   );
+  if (IS_PROD) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
+}
+
+/**
+ * Resolve join identity.
+ * Production / when secret set: JWT required (OWASP A01 — never trust ?role=).
+ */
+function resolveJoinAuth(payload = {}) {
+  const token = String(payload.token || '').trim();
+
+  if (JWT_SECRET) {
+    const claims = assertMushafClaims(verifyHs256Jwt(token, JWT_SECRET));
+    if (!claims) {
+      return { ok: false, error: 'Token mushaf tidak sah atau tamat tempoh' };
+    }
+    return {
+      ok: true,
+      roomId: claims.room,
+      role: claims.role,
+      userId: claims.userId,
+      name: claims.name,
+    };
+  }
+
+  if (IS_PROD) {
+    return {
+      ok: false,
+      error: 'MUSHAF_JWT_SECRET / MUSHAF_SYNC_SECRET wajib dalam production',
+    };
+  }
+
+  // Local/dev only fallback — student by default; teacher blocked without secret.
+  const roomId = String(payload.roomId || payload.room || '').trim();
+  if (!roomId) {
+    return { ok: false, error: 'roomId required' };
+  }
+  return {
+    ok: true,
+    roomId,
+    role: 'student',
+    userId: String(payload.userId || '').trim() || null,
+    name: '',
+  };
+}
+
+const app = express();
+app.disable('x-powered-by');
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: IS_PROD ? ALLOWED_SOCKET_ORIGINS : true,
+    methods: ['GET', 'POST'],
+  },
 });
+
+app.use(securityHeaders);
+app.use(express.static(join(__dirname, 'public')));
+app.use('/data', express.static(join(__dirname, 'data')));
 
 app.get(['/', '/index.html'], (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
@@ -75,19 +156,30 @@ app.get('/app.js', (_req, res) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'alhelmi-live-mushaf', renderer: 'svg-mushaf', ui: 'toolbar-slim-3' });
+  res.json({
+    ok: true,
+    service: 'alhelmi-live-mushaf',
+    renderer: 'svg-mushaf',
+    ui: 'toolbar-slim-3',
+    auth: JWT_SECRET ? 'jwt' : IS_PROD ? 'misconfigured' : 'dev-student-only',
+  });
 });
 
-const SYNC_SECRET = process.env.MUSHAF_SYNC_SECRET || '';
-
 /** Dashboard / Moodle pushes active batch reader for turn queue sync */
-app.post('/api/room/:roomId/active-reader', express.json(), (req, res) => {
+app.post('/api/room/:roomId/active-reader', express.json({ limit: '32kb' }), (req, res) => {
   const roomId = String(req.params.roomId || '').trim();
   if (!roomId) {
     res.status(400).json({ error: 'roomId required' });
     return;
   }
-  if (SYNC_SECRET && req.get('x-mushaf-sync-key') !== SYNC_SECRET) {
+
+  // ISO 27001 A.8.3 — fail closed when sync secret missing in production.
+  if (!SYNC_SECRET) {
+    if (IS_PROD) {
+      res.status(503).json({ error: 'MUSHAF_SYNC_SECRET tidak dikonfigurasi' });
+      return;
+    }
+  } else if (req.get('x-mushaf-sync-key') !== SYNC_SECRET) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -106,7 +198,12 @@ app.post('/api/room/:roomId/active-reader', express.json(), (req, res) => {
   };
   rooms.set(roomId, next);
   io.to(roomId).emit('state', next);
-  res.json({ ok: true, roomId, activeReaderId: next.activeReaderId, activeReaderName: next.activeReaderName });
+  res.json({
+    ok: true,
+    roomId,
+    activeReaderId: next.activeReaderId,
+    activeReaderName: next.activeReaderName,
+  });
 });
 
 /** Proxy + cache SVG mushaf Medina (islamic.app) — paparan seperti cetakan */
@@ -151,20 +248,30 @@ io.on('connection', (socket) => {
   let currentRoom = null;
   let role = 'student';
 
-  socket.on('join', ({ roomId, role: joinRole }) => {
-    if (!roomId) return;
+  socket.on('join', (payload = {}) => {
+    const auth = resolveJoinAuth(payload);
+    if (!auth.ok) {
+      socket.emit('auth_error', { error: auth.error });
+      return;
+    }
 
     if (currentRoom) {
       socket.leave(currentRoom);
     }
 
-    currentRoom = String(roomId);
-    role = joinRole === 'teacher' ? 'teacher' : 'student';
+    currentRoom = auth.roomId;
+    role = auth.role;
+    socket.data.userId = auth.userId;
     socket.join(currentRoom);
 
     const state = getRoom(currentRoom);
     socket.emit('state', state);
-    socket.emit('joined', { roomId: currentRoom, role });
+    socket.emit('joined', {
+      roomId: currentRoom,
+      role,
+      userId: auth.userId,
+      name: auth.name,
+    });
 
     if (role === 'teacher') {
       socket.to(currentRoom).emit('teacher_online', true);
@@ -173,6 +280,7 @@ io.on('connection', (socket) => {
 
   socket.on('teacher_update', (patch) => {
     if (role !== 'teacher' || !currentRoom) return;
+    if (!patch || typeof patch !== 'object') return;
 
     const state = getRoom(currentRoom);
     const next = { ...state, ...patch, updatedAt: Date.now() };
@@ -195,6 +303,10 @@ io.on('connection', (socket) => {
 
 httpServer.listen(PORT, () => {
   console.log(`AlHelmi Live Mushaf → http://localhost:${PORT}`);
-  console.log(`Guru:    http://localhost:${PORT}/?room=demo&role=teacher`);
-  console.log(`Pelajar: http://localhost:${PORT}/?room=demo&role=student`);
+  console.log(`Auth mode: ${JWT_SECRET ? 'jwt' : IS_PROD ? 'MISCONFIGURED' : 'dev-student-only'}`);
+  if (!JWT_SECRET) {
+    console.warn(
+      '[security] Set MUSHAF_JWT_SECRET (or MUSHAF_SYNC_SECRET). Teacher role via ?role= is disabled.',
+    );
+  }
 });

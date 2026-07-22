@@ -1,8 +1,9 @@
 const params = new URLSearchParams(window.location.search);
-const roomId = params.get('room') || 'demo';
-const roleParam = (params.get('role') || 'student').trim().toLowerCase();
-const role = roleParam === 'teacher' || roleParam === 'guru' ? 'teacher' : 'student';
-const viewerUserId = (params.get('userid') || params.get('userId') || '').trim();
+const accessToken = (params.get('token') || '').trim();
+/** Room/role dari query hanya untuk paparan awal; autoriti sebenar dari JWT (server). */
+let roomId = params.get('room') || 'demo';
+let role = 'student';
+let viewerUserId = (params.get('userid') || params.get('userId') || '').trim();
 
 const ZOOM_KEY = 'alhelmi-mushaf-zoom';
 const FOLLOW_KEY = `alhelmi-mushaf-follow:${roomId}`;
@@ -83,10 +84,32 @@ const modeLabels = {
 
 init();
 
-async function init() {
+function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
+  roomId = String(nextRoom || roomId);
+  role = nextRole === 'teacher' ? 'teacher' : 'student';
+  if (userId) viewerUserId = String(userId);
+
   els.roomLabel.textContent = `Bilik: ${roomId}`;
   els.roleLabel.textContent = role === 'teacher' ? 'Guru' : 'Pelajar';
+  document.body.classList.remove('role-teacher', 'role-student');
   document.body.classList.add(role === 'teacher' ? 'role-teacher' : 'role-student');
+
+  if (role === 'teacher') {
+    initMenuToggle();
+    syncTopbarHeight();
+    window.addEventListener('resize', syncTopbarHeight);
+  }
+}
+
+async function init() {
+  els.roomLabel.textContent = accessToken ? 'Bilik: …' : `Bilik: ${roomId}`;
+  els.roleLabel.textContent = 'Menyambung…';
+  document.body.classList.add('role-student');
+
+  if (!accessToken) {
+    els.statusLabel.textContent =
+      'Token mushaf diperlukan — buka melalui portal AlHelmi (login).';
+  }
 
   try {
     navData = await fetch('/data/navigation.json').then((r) => r.json());
@@ -95,7 +118,7 @@ async function init() {
     bindAyahClicks();
   } catch (error) {
     console.error('Init gagal:', error);
-    els.statusLabel.textContent = 'Ralat memuatkan kawalan â€” muat semula halaman';
+    els.statusLabel.textContent = 'Ralat memuatkan kawalan — muat semula halaman';
   }
 
   roomState = {
@@ -105,26 +128,40 @@ async function init() {
     teacherZoom: TEACHER_DEFAULT_ZOOM,
     syncZoom: false,
     highlightedVerse: null,
-  highlightedAyahs: [],
-  scopeLabel: '',
-  webcamLayout: 'pip',
-  webcamTeacher: false,
-  webcamStudents: false,
-  activeReaderId: null,
-  activeReaderName: '',
-};
+    highlightedAyahs: [],
+    scopeLabel: '',
+    webcamLayout: 'pip',
+    webcamTeacher: false,
+    webcamStudents: false,
+    activeReaderId: null,
+    activeReaderName: '',
+  };
 
   updateZoomLabels();
-  if (role === 'teacher') {
-    initMenuToggle();
-    syncTopbarHeight();
-    window.addEventListener('resize', syncTopbarHeight);
-  }
-  socket.emit('join', { roomId, role });
+  // Register listeners BEFORE emit (elak race event hilang).
   socket.on('state', applyRoomState);
-  socket.on('joined', () => setConnectionStatus(true));
-  socket.on('connect', () => setConnectionStatus(true));
+  socket.on('joined', (payload) => {
+    applyAuthorizedIdentity(payload || {});
+    setConnectionStatus(true);
+  });
+  socket.on('auth_error', (payload) => {
+    setConnectionStatus(false);
+    role = 'student';
+    document.body.classList.remove('role-teacher');
+    document.body.classList.add('role-student');
+    els.roleLabel.textContent = 'Ditolak';
+    els.statusLabel.textContent = payload?.error || 'Akses mushaf ditolak';
+  });
+  socket.on('connect', () => {
+    els.statusLabel.textContent = accessToken ? 'Mengesahkan…' : 'Token diperlukan';
+  });
   socket.on('disconnect', () => setConnectionStatus(false));
+
+  socket.emit('join', {
+    token: accessToken || undefined,
+    roomId: accessToken ? undefined : roomId,
+    userId: viewerUserId || undefined,
+  });
 }
 
 function syncTopbarHeight() {
