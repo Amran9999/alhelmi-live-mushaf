@@ -1,4 +1,4 @@
-# Start AlHelmi Live Mushaf (dev)
+# Start AlHelmi Live Mushaf / Kelas Talaqqi (dev)
 # Usage: .\Start-Mushaf.ps1
 
 $ErrorActionPreference = "Stop"
@@ -16,9 +16,12 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 
 Set-Location $Root
 Write-Host ""
-Write-Host "AlHelmi Live Mushaf — http://localhost:3090" -ForegroundColor Cyan
-Write-Host "  Guru:    http://localhost:3090/?room=demo&role=teacher"
-Write-Host "  Pelajar: http://localhost:3090/?room=demo&role=student"
+Write-Host "AlHelmi Kelas Talaqqi — http://localhost:3090" -ForegroundColor Cyan
+Write-Host "  Guru:    http://localhost:3090/?room=kelas-a"
+Write-Host "  Pelajar: http://localhost:3090/student?room=kelas-a"
+Write-Host "  Mushaf:  http://localhost:3090/mushaf?room=kelas-a&role=teacher&local=1"
+Write-Host ""
+Write-Host "Public (tunnel): https://quran.alhelmi.com/?room=KELAS-ID" -ForegroundColor DarkGray
 Write-Host ""
 
 npm run dev

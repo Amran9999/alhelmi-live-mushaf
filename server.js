@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import {
@@ -10,14 +11,41 @@ import {
 } from './jwt.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/** Muat .env dari folder projek (tanpa pakej dotenv). */
+function loadDotEnv() {
+  const envPath = join(__dirname, '.env');
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, 'utf8').split(/\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+}
+loadDotEnv();
+
 const PORT = Number(process.env.PORT) || 3090;
+
 const MUSHAF_UPSTREAM = 'https://api.islamic.app/v1/mushaf';
 const MUSHAF_BRAND_TITLE = 'AlHelmi Quran';
 const SVG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = resolveMushafJwtSecret();
-const SYNC_SECRET = (process.env.MUSHAF_SYNC_SECRET || '').trim();
-/** Prod: HTTPS parents only (AH-09 — no localhost HTTP in frame-ancestors). */
+/** Sync key berasingan pilihan; jika kosong, guna JWT secret. */
+const SYNC_SECRET = (process.env.MUSHAF_SYNC_SECRET || JWT_SECRET || '').trim();
+/** Tanpa JWT + bukan production → boleh ?role=teacher|student */
+const LOCAL_DEV = !JWT_SECRET && !IS_PROD;
+
 const ALLOWED_FRAME_ANCESTORS = (
   IS_PROD
     ? [
@@ -29,6 +57,8 @@ const ALLOWED_FRAME_ANCESTORS = (
       ]
     : [
         "'self'",
+        'http://localhost:3090',
+        'http://127.0.0.1:3090',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'http://host.docker.internal:3000',
@@ -38,6 +68,7 @@ const ALLOWED_FRAME_ANCESTORS = (
         'https://www.alhelmi.com',
       ]
 ).join(' ');
+
 const ALLOWED_SOCKET_ORIGINS = IS_PROD
   ? [
       'https://app.alhelmi.com',
@@ -54,6 +85,13 @@ const ALLOWED_SOCKET_ORIGINS = IS_PROD
       'http://127.0.0.1:3090',
     ];
 
+const DEMO_FIFO = [
+  { id: 's1', name: 'Aisyah', status: 'waiting', round: 1 },
+  { id: 's2', name: 'Umar', status: 'waiting', round: 1 },
+  { id: 's3', name: 'Abu Bakar', status: 'waiting', round: 1 },
+  { id: 's4', name: 'Fatimah', status: 'waiting', round: 1 },
+];
+
 const DEFAULT_STATE = {
   mode: 'bacaan',
   page: 1,
@@ -61,15 +99,18 @@ const DEFAULT_STATE = {
   scopeLabel: '',
   teacherZoom: 100,
   syncZoom: false,
+  pageSync: true,
   highlightedVerse: null,
   highlightedAyahs: [],
   highlightedWords: [],
   mushafLayout: 'hafs-v2',
   webcamLayout: 'pip',
-  webcamTeacher: false,
+  webcamTeacher: true,
   webcamStudents: false,
   activeReaderId: null,
   activeReaderName: '',
+  muteAllExceptActive: false,
+  fifo: DEMO_FIFO.map((s) => ({ ...s })),
 };
 
 const rooms = new Map();
@@ -81,9 +122,19 @@ function brandMushafSvg(svgText) {
 
 function getRoom(roomId) {
   if (!rooms.has(roomId)) {
-    rooms.set(roomId, { ...DEFAULT_STATE, updatedAt: Date.now() });
+    rooms.set(roomId, {
+      ...DEFAULT_STATE,
+      fifo: DEMO_FIFO.map((s) => ({ ...s })),
+      updatedAt: Date.now(),
+    });
   }
   return rooms.get(roomId);
+}
+
+function publishRoom(roomId, next) {
+  rooms.set(roomId, next);
+  io.to(roomId).emit('state', next);
+  return next;
 }
 
 function securityHeaders(_req, res, next) {
@@ -91,12 +142,10 @@ function securityHeaders(_req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  // Webcam UI flags sync to parent Jitsi — no getUserMedia on this origin.
   res.setHeader(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), display-capture=()',
+    'camera=(self), microphone=(self), geolocation=(), display-capture=()',
   );
-  // Staged CSP: same-origin Socket.IO + Google Fonts used by public/index.html.
   res.setHeader(
     'Content-Security-Policy',
     [
@@ -107,7 +156,9 @@ function securityHeaders(_req, res, next) {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob:",
+      "media-src 'self' blob:",
       "connect-src 'self' ws: wss:",
+      "frame-src 'self'",
       `frame-ancestors ${ALLOWED_FRAME_ANCESTORS}`,
     ].join('; '),
   );
@@ -118,8 +169,8 @@ function securityHeaders(_req, res, next) {
 }
 
 /**
- * Resolve join identity.
- * Production / when secret set: JWT required (OWASP A01 — never trust ?role=).
+ * Production / JWT secret: token wajib.
+ * Local tanpa secret: ?role=teacher|student dibenarkan.
  */
 function resolveJoinAuth(payload = {}) {
   const token = String(payload.token || '').trim();
@@ -145,18 +196,80 @@ function resolveJoinAuth(payload = {}) {
     };
   }
 
-  // Local/dev only fallback — student by default; teacher blocked without secret.
   const roomId = String(payload.roomId || payload.room || '').trim();
   if (!roomId) {
     return { ok: false, error: 'roomId required' };
   }
+
+  const role = payload.role === 'teacher' ? 'teacher' : 'student';
+  const userId =
+    String(payload.userId || '').trim() ||
+    (role === 'teacher' ? 'teacher-local' : `student-${Date.now()}`);
+  const name = String(payload.name || '').trim() || (role === 'teacher' ? 'Ustaz' : 'Pelajar');
+
+  return { ok: true, roomId, role, userId, name };
+}
+
+function applyFifoAction(state, action) {
+  const fifo = (state.fifo || []).map((s) => ({ ...s }));
+  const id = String(action.studentId || '').trim();
+  let activeReaderId = state.activeReaderId;
+  let activeReaderName = state.activeReaderName;
+
+  if (action.type === 'call' && id) {
+    for (const s of fifo) {
+      if (s.status === 'active') s.status = 'done';
+    }
+    const target = fifo.find((s) => s.id === id);
+    if (target) {
+      target.status = 'active';
+      activeReaderId = target.id;
+      activeReaderName = target.name;
+    }
+  } else if (action.type === 'end') {
+    const active = fifo.find((s) => s.status === 'active') || fifo.find((s) => s.id === id);
+    if (active) active.status = 'done';
+    activeReaderId = null;
+    activeReaderName = '';
+  } else if (action.type === 'skip' && id) {
+    const target = fifo.find((s) => s.id === id);
+    if (target && target.status === 'waiting') {
+      const idx = fifo.indexOf(target);
+      fifo.splice(idx, 1);
+      fifo.push(target);
+    }
+  } else if (action.type === 'review' && id) {
+    const target = fifo.find((s) => s.id === id);
+    if (target) {
+      target.status = 'waiting';
+      target.round = (target.round || 1) + 1;
+      const idx = fifo.indexOf(target);
+      fifo.splice(idx, 1);
+      fifo.push(target);
+    }
+  } else if (action.type === 'reset') {
+    return {
+      ...state,
+      fifo: DEMO_FIFO.map((s) => ({ ...s })),
+      activeReaderId: null,
+      activeReaderName: '',
+      muteAllExceptActive: false,
+      updatedAt: Date.now(),
+    };
+  }
+
   return {
-    ok: true,
-    roomId,
-    role: 'student',
-    userId: String(payload.userId || '').trim() || null,
-    name: '',
+    ...state,
+    fifo,
+    activeReaderId,
+    activeReaderName,
+    updatedAt: Date.now(),
   };
+}
+
+function redirectWithQuery(res, path, query) {
+  const qs = new URLSearchParams(query).toString();
+  res.redirect(302, qs ? `${path}?${qs}` : path);
 }
 
 const app = express();
@@ -170,35 +283,41 @@ const io = new Server(httpServer, {
 });
 
 app.use(securityHeaders);
-app.use(express.static(join(__dirname, 'public')));
-app.use('/data', express.static(join(__dirname, 'data')));
 
-app.get(['/', '/index.html'], (_req, res) => {
+/** / = bilik guru; ?role=student → /student (serasi pautan lama) */
+app.get(['/', '/classroom', '/classroom.html'], (req, res) => {
+  if (String(req.query.role || '').toLowerCase() === 'student') {
+    redirectWithQuery(res, '/student', req.query);
+    return;
+  }
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.sendFile(join(__dirname, 'public', 'classroom.html'));
+});
+
+app.get(['/mushaf', '/index.html'], (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.sendFile(join(__dirname, 'public', 'index.html'));
 });
 
-app.get('/styles.css', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(join(__dirname, 'public', 'styles.css'));
-});
-
-app.get('/app.js', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(join(__dirname, 'public', 'app.js'));
+app.get('/student', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.sendFile(join(__dirname, 'public', 'student.html'));
 });
 
 app.get('/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'alhelmi-live-mushaf',
+    ui: 'classroom-dual-panel',
     renderer: 'svg-mushaf',
-    ui: 'toolbar-slim-3',
-    auth: JWT_SECRET ? 'jwt' : IS_PROD ? 'misconfigured' : 'dev-student-only',
+    auth: JWT_SECRET ? 'jwt' : LOCAL_DEV ? 'dev-local' : 'misconfigured',
+    port: PORT,
   });
 });
 
-/** Dashboard / Moodle pushes active batch reader for turn queue sync */
+app.use(express.static(join(__dirname, 'public'), { index: false }));
+app.use('/data', express.static(join(__dirname, 'data')));
+
 app.post('/api/room/:roomId/active-reader', express.json({ limit: '32kb' }), (req, res) => {
   const roomId = String(req.params.roomId || '').trim();
   if (!roomId) {
@@ -206,7 +325,6 @@ app.post('/api/room/:roomId/active-reader', express.json({ limit: '32kb' }), (re
     return;
   }
 
-  // ISO 27001 A.8.3 — fail closed when sync secret missing in production.
   if (!SYNC_SECRET) {
     if (IS_PROD) {
       res.status(503).json({ error: 'MUSHAF_SYNC_SECRET tidak dikonfigurasi' });
@@ -223,14 +341,13 @@ app.post('/api/room/:roomId/active-reader', express.json({ limit: '32kb' }), (re
   ).trim();
 
   const state = getRoom(roomId);
-  const next = {
+  const next = publishRoom(roomId, {
     ...state,
     activeReaderId: activeReaderId === null || activeReaderId === '' ? null : String(activeReaderId),
     activeReaderName,
     updatedAt: Date.now(),
-  };
-  rooms.set(roomId, next);
-  io.to(roomId).emit('state', next);
+  });
+
   res.json({
     ok: true,
     roomId,
@@ -239,7 +356,6 @@ app.post('/api/room/:roomId/active-reader', express.json({ limit: '32kb' }), (re
   });
 });
 
-/** Proxy + cache SVG mushaf Medina (islamic.app) — paparan seperti cetakan */
 app.get('/mushaf/page/:page.svg', async (req, res) => {
   const page = Number(req.params.page);
   if (!Number.isInteger(page) || page < 1 || page > 604) {
@@ -260,9 +376,7 @@ app.get('/mushaf/page/:page.svg', async (req, res) => {
 
   try {
     const url = `${MUSHAF_UPSTREAM}/page/${page}.svg?font=uthmani&theme=${theme}&width=${width}`;
-    const upstream = await fetch(url, {
-      headers: { Accept: 'image/svg+xml' },
-    });
+    const upstream = await fetch(url, { headers: { Accept: 'image/svg+xml' } });
     if (!upstream.ok) {
       res.status(502).send(`Mushaf upstream error (${upstream.status})`);
       return;
@@ -281,6 +395,26 @@ io.on('connection', (socket) => {
   let currentRoom = null;
   let role = 'student';
 
+  function peerInfo(sock) {
+    return {
+      socketId: sock.id,
+      userId: sock.data.userId,
+      name: sock.data.name,
+      role: sock.data.role,
+    };
+  }
+
+  function listRoomPeers(roomId) {
+    const room = io.sockets.adapter.rooms.get(roomId);
+    if (!room) return [];
+    const peers = [];
+    for (const id of room) {
+      const s = io.sockets.sockets.get(id);
+      if (s?.data?.userId) peers.push(peerInfo(s));
+    }
+    return peers;
+  }
+
   socket.on('join', (payload = {}) => {
     const auth = resolveJoinAuth(payload);
     if (!auth.ok) {
@@ -289,12 +423,15 @@ io.on('connection', (socket) => {
     }
 
     if (currentRoom) {
+      socket.to(currentRoom).emit('av-peer-left', { socketId: socket.id, userId: socket.data.userId });
       socket.leave(currentRoom);
     }
 
     currentRoom = auth.roomId;
     role = auth.role;
     socket.data.userId = auth.userId;
+    socket.data.name = auth.name;
+    socket.data.role = role;
     socket.join(currentRoom);
 
     const state = getRoom(currentRoom);
@@ -304,7 +441,12 @@ io.on('connection', (socket) => {
       role,
       userId: auth.userId,
       name: auth.name,
+      localDev: LOCAL_DEV,
     });
+
+    const peers = listRoomPeers(currentRoom).filter((p) => p.socketId !== socket.id);
+    socket.emit('av-roster', peers);
+    socket.to(currentRoom).emit('av-peer-joined', peerInfo(socket));
 
     if (role === 'teacher') {
       socket.to(currentRoom).emit('teacher_online', true);
@@ -317,29 +459,69 @@ io.on('connection', (socket) => {
 
     const state = getRoom(currentRoom);
     const next = { ...state, ...patch, updatedAt: Date.now() };
+    if (patch.mode === 'bacaan') next.hidden = false;
+    publishRoom(currentRoom, next);
+  });
 
-    // Bacaan = sentiasa tunjuk mushaf. Hafazan = guru kawalan via toggle hide (tiada auto-hide).
-    if (patch.mode === 'bacaan') {
-      next.hidden = false;
+  socket.on('fifo_action', (action = {}) => {
+    if (role !== 'teacher' || !currentRoom) return;
+    const state = getRoom(currentRoom);
+    const next = applyFifoAction(state, action);
+    if (action.type === 'mute_all') {
+      next.muteAllExceptActive = true;
+      next.updatedAt = Date.now();
     }
+    publishRoom(currentRoom, next);
+    if (next.muteAllExceptActive) {
+      io.to(currentRoom).emit('av-mute-policy', {
+        muteAllExceptActive: true,
+        activeReaderId: next.activeReaderId || null,
+      });
+    }
+  });
 
-    rooms.set(currentRoom, next);
-    io.to(currentRoom).emit('state', next);
+  socket.on('av-signal', ({ to, signal } = {}) => {
+    if (!currentRoom || !to || !signal) return;
+    const target = io.sockets.sockets.get(to);
+    if (!target || !target.rooms.has(currentRoom)) return;
+    target.emit('av-signal', { from: socket.id, signal, peer: peerInfo(socket) });
+  });
+
+  socket.on('av-media-state', (media = {}) => {
+    if (!currentRoom) return;
+    socket.to(currentRoom).emit('av-media-state', {
+      socketId: socket.id,
+      userId: socket.data.userId,
+      camOn: Boolean(media.camOn),
+      micOn: Boolean(media.micOn),
+    });
+  });
+
+  socket.on('av-ready', () => {
+    if (!currentRoom) return;
+    const peers = listRoomPeers(currentRoom).filter((p) => p.socketId !== socket.id);
+    socket.emit('av-roster', peers);
   });
 
   socket.on('disconnect', () => {
-    if (role === 'teacher' && currentRoom) {
+    if (!currentRoom) return;
+    socket.to(currentRoom).emit('av-peer-left', {
+      socketId: socket.id,
+      userId: socket.data.userId,
+    });
+    if (role === 'teacher') {
       socket.to(currentRoom).emit('teacher_online', false);
     }
   });
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`AlHelmi Live Mushaf → http://localhost:${PORT}`);
-  console.log(`Auth mode: ${JWT_SECRET ? 'jwt' : IS_PROD ? 'MISCONFIGURED' : 'dev-student-only'}`);
-  if (!JWT_SECRET) {
-    console.warn(
-      '[security] Set MUSHAF_JWT_SECRET (or MUSHAF_SYNC_SECRET). Teacher role via ?role= is disabled.',
-    );
+  console.log(`AlHelmi Live Mushaf (kelas) → http://localhost:${PORT}`);
+  console.log(`  Guru:     http://localhost:${PORT}/?room=kelas-a`);
+  console.log(`  Pelajar:  http://localhost:${PORT}/student?room=kelas-a`);
+  console.log(`  Mushaf:   http://localhost:${PORT}/mushaf?room=kelas-a&role=teacher&local=1`);
+  console.log(`Auth: ${JWT_SECRET ? 'jwt' : LOCAL_DEV ? 'dev-local (?role= OK)' : 'MISCONFIGURED'}`);
+  if (!JWT_SECRET && !IS_PROD) {
+    console.warn('[dev] Tiada MUSHAF_JWT_SECRET — guna ?room=&role= untuk ujian tempatan.');
   }
 });

@@ -1,10 +1,15 @@
 const params = new URLSearchParams(window.location.search);
 const accessToken = (params.get('token') || '').trim();
-/** Intent bilik dari query — tanpa JWT jangan load shell kelas (OWASP A01). */
+/** Intent bilik dari query — tanpa JWT jangan load shell kelas (OWASP A01), kecuali local=1. */
 const requestedRoom = (params.get('room') || '').trim();
-const classGateRequired = Boolean(requestedRoom) && !accessToken;
-/** Room/role dari query hanya untuk paparan awal; autoriti sebenar dari JWT (server). */
-let roomId = requestedRoom || 'demo';
+const localDev = params.get('local') === '1' || params.get('dev') === '1';
+const embedMode = params.get('embed') === '1';
+const viewerOnly = params.get('viewer') === '1';
+const queryRole = params.get('role') === 'teacher' ? 'teacher' : 'student';
+const queryName = (params.get('name') || '').trim();
+const classGateRequired = Boolean(requestedRoom) && !accessToken && !localDev;
+/** Room/role dari query hanya untuk paparan awal; autoriti sebenar dari JWT (server) kecuali local. */
+let roomId = requestedRoom || 'kelas-a';
 let role = 'student';
 let viewerUserId = (params.get('userid') || params.get('userId') || '').trim();
 
@@ -107,6 +112,10 @@ function activateClassGate() {
   if (els.locationLabel) els.locationLabel.textContent = 'Buka melalui app.alhelmi.com';
 }
 
+let uiBound = false;
+let ayahClicksBound = false;
+let viewerScrollKeysBound = false;
+
 function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
   roomId = String(nextRoom || roomId);
   role = nextRole === 'teacher' ? 'teacher' : 'student';
@@ -122,6 +131,29 @@ function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
     syncTopbarHeight();
     window.addEventListener('resize', syncTopbarHeight);
   }
+  if (viewerOnly || embedMode) {
+    window.addEventListener('resize', () => {
+      window.requestAnimationFrame(() => applyZoomTransform());
+    });
+    initViewerScrollKeys();
+    if (els.viewerShell) {
+      els.viewerShell.tabIndex = 0;
+      els.viewerShell.setAttribute('aria-label', 'Mushaf — skrol dengan mouse atau anak panah');
+      // Fokus supaya wheel/keyboard terus ke scroll container
+      els.viewerShell.focus({ preventScroll: true });
+      els.viewerShell.addEventListener('pointerdown', () => {
+        els.viewerShell.focus({ preventScroll: true });
+      });
+    }
+  }
+  initClassroomParentBridge();
+
+  // Bind selepas role disahkan — jangan bind semasa role masih lalai "student".
+  if (navData && !uiBound) {
+    bindUi();
+    bindAyahClicks();
+    uiBound = true;
+  }
 }
 
 async function init() {
@@ -130,11 +162,21 @@ async function init() {
     return;
   }
 
+  if (embedMode) {
+    // viewer=1: mushaf penuh, toolbar dalam iframe DISEMBUNYIKAN (dock di shell kelas)
+    document.documentElement.style.height = '100%';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.classList.add(
+      'classroom-fs',
+      viewerOnly ? 'classroom-mode-baca' : 'classroom-mode-kawal',
+    );
+  }
+
   els.roomLabel.textContent = accessToken ? 'Bilik: …' : `Bilik: ${roomId}`;
   els.roleLabel.textContent = 'Menyambung…';
   document.body.classList.add('role-student');
 
-  if (!accessToken) {
+  if (!accessToken && !localDev) {
     els.statusLabel.textContent =
       'Token mushaf diperlukan — buka melalui portal AlHelmi (login).';
   }
@@ -142,8 +184,7 @@ async function init() {
   try {
     navData = await fetch('/data/navigation.json').then((r) => r.json());
     populateNavSelects();
-    bindUi();
-    bindAyahClicks();
+    // bindUi/bindAyahClicks ditangguh sehingga socket "joined" (role sebenar).
   } catch (error) {
     console.error('Init gagal:', error);
     els.statusLabel.textContent = 'Ralat memuatkan kawalan — muat semula halaman';
@@ -155,6 +196,7 @@ async function init() {
     hidden: false,
     teacherZoom: TEACHER_DEFAULT_ZOOM,
     syncZoom: false,
+    pageSync: true,
     highlightedVerse: null,
     highlightedAyahs: [],
     scopeLabel: '',
@@ -181,7 +223,11 @@ async function init() {
     els.statusLabel.textContent = payload?.error || 'Akses mushaf ditolak';
   });
   socket.on('connect', () => {
-    els.statusLabel.textContent = accessToken ? 'Mengesahkan…' : 'Token diperlukan';
+    els.statusLabel.textContent = accessToken
+      ? 'Mengesahkan…'
+      : localDev
+        ? 'Mod lokal…'
+        : 'Token diperlukan';
   });
   socket.on('disconnect', () => setConnectionStatus(false));
 
@@ -190,6 +236,8 @@ async function init() {
     token: accessToken || undefined,
     roomId: accessToken ? undefined : roomId,
     userId: viewerUserId || undefined,
+    role: localDev || !accessToken ? queryRole : undefined,
+    name: queryName || undefined,
   });
 }
 
@@ -218,11 +266,14 @@ function toggleMenu() {
 }
 
 function initMenuToggle() {
-  // The mushaf itself is the teaching surface. Start with controls tucked away
-  // unless the guru explicitly chose to keep them open in this browser tab.
-  const saved = sessionStorage.getItem(MENU_COLLAPSED_KEY);
-  const collapsed = saved === null ? true : saved === '1';
-  setMenuCollapsed(collapsed, { persist: false });
+  // Embed dual-panel: dock mesti sentiasa aktif (jangan warisi menu-collapsed).
+  if (embedMode || document.body.classList.contains('classroom-mode-kawal')) {
+    setMenuCollapsed(false, { persist: false });
+  } else {
+    const saved = sessionStorage.getItem(MENU_COLLAPSED_KEY);
+    const collapsed = saved === '1';
+    setMenuCollapsed(collapsed, { persist: false });
+  }
   els.toggleMenu?.addEventListener('click', toggleMenu);
 
   const moreBtn = document.getElementById('toolbar-more-btn');
@@ -241,7 +292,7 @@ function setConnectionStatus(connected) {
     els.statusLabel.textContent = 'Disambung';
     els.statusLabel.classList.add('is-live');
   } else {
-    els.statusLabel.textContent = 'Terputus â€” cuba sambung semulaâ€¦';
+    els.statusLabel.textContent = 'Terputus — cuba sambung semula…';
     els.statusLabel.classList.remove('is-live');
   }
 }
@@ -295,12 +346,33 @@ function filterJuzGrid() {
   });
 }
 
+function normalizeSurahQuery(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^surah\s+/i, '')
+    .replace(/^(al|an|ar|as|at|az|ad|ash|asy)-?/i, '')
+    .replace(/[''`]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
 function getFilteredSurahs() {
-  const query = els.surahSearch?.value.trim().toLowerCase() || '';
-  if (!query) return surahCatalog;
+  const raw = els.surahSearch?.value.trim().toLowerCase() || '';
+  if (!raw) return surahCatalog;
+  const query = normalizeSurahQuery(raw);
+  // Jika input masih format "2. Al-Baqarah" (selepas pilih), tunjuk semua bila fokus.
+  if (/^\d+\.\s+/.test(raw) && !els.surahSearch.matches(':focus')) return surahCatalog;
   return surahCatalog.filter((item) => {
-    const haystack = `${item.num} ${item.name}`.toLowerCase();
-    return haystack.includes(query);
+    const name = item.name.toLowerCase();
+    const bare = normalizeSurahQuery(name);
+    const haystack = `${item.num} ${name} ${bare}`;
+    return (
+      haystack.includes(raw) ||
+      haystack.includes(query) ||
+      bare.includes(query) ||
+      String(item.num) === raw ||
+      String(item.num) === query
+    );
   });
 }
 
@@ -453,22 +525,55 @@ function updateLocationLabel(page, svg = null) {
   if (els.mushafCtxSurah) els.mushafCtxSurah.textContent = formatSurahBadge(surah, surahName);
 
   if (els.locationLabel) {
-    els.locationLabel.textContent = `Lokasi: ${surahName} Â· Juzuk ${juz} Â· Hal. ${page}`;
+    els.locationLabel.textContent = `Lokasi: ${surahName} · Juzuk ${juz} · Hal. ${page}`;
   }
 }
 
+function findSurahByNamePart(namePart) {
+  const q = normalizeSurahQuery(namePart);
+  if (!q) return null;
+  const exact = surahCatalog.find((item) => normalizeSurahQuery(item.name) === q);
+  if (exact) return exact;
+  const starts = surahCatalog.find((item) => normalizeSurahQuery(item.name).startsWith(q));
+  if (starts) return starts;
+  return surahCatalog.find((item) => normalizeSurahQuery(item.name).includes(q)) || null;
+}
+
 function resolveSurahFromFilter() {
-  const query = els.surahSearch.value.trim().toLowerCase();
-  if (!query) return selectedSurah || 1;
+  const raw = els.surahSearch.value.trim();
+  if (!raw) return selectedSurah || 1;
+  const rawLower = raw.toLowerCase();
+
+  // "67. Al-Mulk" / "1. Al-Mulk" (nombor vs nama tak sepadan) / "12"
+  const numbered = raw.match(/^(\d{1,3})(?:\.\s*(.*))?$/);
+  if (numbered) {
+    const num = Number(numbered[1]);
+    const namePart = (numbered[2] || '').trim();
+    if (num >= 1 && num <= 114) {
+      const byNum = surahCatalog.find((s) => s.num === num);
+      if (!namePart) return num;
+      const numName = normalizeSurahQuery(byNum?.name || '');
+      const wantName = normalizeSurahQuery(namePart);
+      // Nama sepadan dengan nombor → ikut nombor
+      if (
+        numName === wantName ||
+        numName.includes(wantName) ||
+        byNum?.name.toLowerCase() === namePart.toLowerCase()
+      ) {
+        return num;
+      }
+      // Contoh bug UI: "1. Al-Mulk" → utamakan nama Al-Mulk (67)
+      const byName = findSurahByNamePart(namePart);
+      if (byName) return byName.num;
+      return num;
+    }
+  }
 
   const filtered = getFilteredSurahs();
   if (filtered.length === 1) return filtered[0].num;
 
-  const exact = surahCatalog.find((item) => {
-    const haystack = `${item.num} ${item.name}`.toLowerCase();
-    return haystack === query || String(item.num) === query;
-  });
-  if (exact) return exact.num;
+  const byName = findSurahByNamePart(rawLower);
+  if (byName) return byName.num;
 
   return filtered[0]?.num || selectedSurah || 1;
 }
@@ -478,6 +583,7 @@ function clampPage(value) {
 }
 
 function bindUi() {
+  if (uiBound) return;
   if (role === 'teacher') {
     document.querySelectorAll('[data-mode]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -493,7 +599,11 @@ function bindUi() {
     });
 
     els.surahSearch.addEventListener('input', filterSurahList);
-    els.surahSearch.addEventListener('focus', openSurahDropdown);
+    els.surahSearch.addEventListener('focus', () => {
+      // Mudah taip semula — highlight teks sedia ada, buka senarai.
+      els.surahSearch.select();
+      openSurahDropdown();
+    });
     els.surahSearch.addEventListener('keydown', (event) => {
       const items = [...els.surahResults.querySelectorAll('li')];
       if (event.key === 'ArrowDown') {
@@ -551,15 +661,15 @@ function bindUi() {
     bindPagePrefetch('mushaf-page-next', 1);
     bindPagePrefetch('page-prev', -1);
     bindPagePrefetch('page-next', 1);
-    document.getElementById('toggle-hide').addEventListener('click', toggleHide);
-    document.getElementById('clear-highlight').addEventListener('click', () => {
+    document.getElementById('toggle-hide')?.addEventListener('click', toggleHide);
+    document.getElementById('clear-highlight')?.addEventListener('click', () => {
       teacherPatch({ highlightedVerse: null, highlightedAyahs: [], highlightedWords: [] });
     });
-    document.getElementById('fullscreen').addEventListener('click', toggleFullscreen);
-    els.syncZoom.addEventListener('change', () => {
+    document.getElementById('fullscreen')?.addEventListener('click', toggleFullscreen);
+    els.syncZoom?.addEventListener('change', () => {
       teacherPatch({ syncZoom: els.syncZoom.checked, teacherZoom: roomState?.teacherZoom ?? 100 });
     });
-    els.scopeInput.addEventListener('change', () => {
+    els.scopeInput?.addEventListener('change', () => {
       teacherPatch({ scopeLabel: els.scopeInput.value.trim() });
     });
     bindWebcamControls();
@@ -610,10 +720,13 @@ function isStudentTurnLocked() {
   return Boolean(activeReaderId && activeReaderId === viewerUserId);
 }
 
-/** Ikut halaman/highlight guru (pilihan atau dikunci). */
+/** Ikut halaman/highlight guru (pilihan, dikunci giliran, atau Mod Sync halaman). */
 function isStudentFollowing() {
   if (role !== 'student') return false;
-  return isStudentTurnLocked() || studentFollowTeacher;
+  if (isStudentTurnLocked()) return true;
+  if (roomState && roomState.pageSync === false) return false;
+  if (roomState && roomState.pageSync === true) return true;
+  return studentFollowTeacher;
 }
 
 function getEffectivePage() {
@@ -732,7 +845,8 @@ function syncWebcamControls(state) {
 }
 
 function bindAyahClicks() {
-  if (role !== 'teacher') return;
+  if (ayahClicksBound || role !== 'teacher') return;
+  ayahClicksBound = true;
 
   els.mushafHost.addEventListener('click', (event) => {
     const node = event.target.closest('[data-ayah]');
@@ -787,7 +901,9 @@ function goNavigation() {
   } else {
     const surah = resolveSurahFromFilter();
     page = navData.surahStartPage[String(surah)] || 1;
+    // Sentiasa betulkan label "N. Nama" supaya nombor/nama sepadan (elak "1. Al-Mulk").
     selectSurah(surah, { updateInput: true, closeDropdown: true });
+    selectedSurah = surah;
   }
 
   teacherPatch({ page });
@@ -863,6 +979,7 @@ function mountPageSvg(svgText, page) {
   }
   lastRenderedPage = page;
   applyZoomTransform();
+  window.requestAnimationFrame(() => applyZoomTransform());
   applyAyahHighlights();
   prefetchAroundPage(page);
 }
@@ -959,10 +1076,10 @@ function applyRoomState(state) {
       btn.classList.toggle('active', btn.getAttribute('data-mode') === state.mode);
     });
     els.scopeInput.value = state.scopeLabel || '';
-    els.syncZoom.checked = Boolean(state.syncZoom);
-    els.toggleHide.textContent = state.hidden
-      ? 'Tunjukkan mushaf pelajar'
-      : 'Sembunyikan mushaf pelajar';
+    if (els.syncZoom) els.syncZoom.checked = Boolean(state.syncZoom);
+    if (els.toggleHide) {
+      els.toggleHide.textContent = state.hidden ? 'Tunjukkan mushaf' : 'Sembunyi mushaf';
+    }
     els.pageLabel.textContent = `Halaman ${state.page} / 604`;
     syncNavControlsToPage(state.page);
     updatePageNavButtons(state.page);
@@ -1029,17 +1146,61 @@ function applyZoomTransform() {
 
   if (svg) {
     svg.style.width = `${displayWidth}px`;
-    svg.style.maxWidth = 'none';
+    svg.style.maxWidth = '100%';
     svg.style.height = 'auto';
+    svg.style.maxHeight = 'none';
   }
 
-  els.viewerScale.style.transform = 'none';
-  document.documentElement.style.setProperty(
-    '--mushaf-width',
-    `${displayWidth + 80}px`,
-  );
+  if (els.viewerScale) els.viewerScale.style.transform = 'none';
+  document.documentElement.style.setProperty('--mushaf-width', `${displayWidth + 80}px`);
   updateZoomLabels();
   applyAyahHighlights();
+}
+
+/** ArrowUp/Down + PageUp/Down skrol mushaf (bukan tukar halaman). */
+function initViewerScrollKeys() {
+  if (viewerScrollKeysBound) return;
+  viewerScrollKeysBound = true;
+
+  const scroller = () => els.viewerShell || els.viewerScale;
+
+  function scrollViewer(key) {
+    const box = scroller();
+    if (!box) return false;
+    const pageStep = Math.max(120, Math.floor(box.clientHeight * 0.85));
+    const lineStep = 72;
+    if (key === 'ArrowDown') box.scrollBy({ top: lineStep, behavior: 'auto' });
+    else if (key === 'ArrowUp') box.scrollBy({ top: -lineStep, behavior: 'auto' });
+    else if (key === 'PageDown' || key === ' ') box.scrollBy({ top: pageStep, behavior: 'auto' });
+    else if (key === 'PageUp') box.scrollBy({ top: -pageStep, behavior: 'auto' });
+    else if (key === 'Home') box.scrollTo({ top: 0 });
+    else if (key === 'End') box.scrollTo({ top: box.scrollHeight });
+    else return false;
+    return true;
+  }
+
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.target.closest('input, textarea, select')) return;
+      const keys = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' '];
+      if (!keys.includes(event.key) && !(event.ctrlKey && (event.key === 'Home' || event.key === 'End'))) {
+        return;
+      }
+      const key = event.ctrlKey && (event.key === 'Home' || event.key === 'End') ? event.key : event.key;
+      if (scrollViewer(key)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+    true,
+  );
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.source !== 'alhelmi-classroom' || data.type !== 'mushaf-scroll') return;
+    scrollViewer(data.key);
+  });
 }
 
 async function renderMushaf() {
@@ -1059,7 +1220,7 @@ async function renderMushaf() {
 
   els.mushafHost.classList.add('is-loading');
   if (!hasVisibleSvg) {
-    els.mushafHost.innerHTML = '<p class="mushaf-loading">Memuatkan halaman mushafâ€¦</p>';
+    els.mushafHost.innerHTML = '<p class="mushaf-loading">Memuatkan halaman mushaf…</p>';
   }
 
   try {
@@ -1090,7 +1251,7 @@ const MUSHAF_SURAH_BAND = '#b8ddb8';
 const MUSHAF_SURAH_BAND_STROKE = '#7aab8a';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** Buang header margin SVG â€” info sudah ada di bar teal (JUZ Â· hal Â· surah). */
+/** Buang header margin SVG — info sudah ada di bar teal (JUZ · hal · surah). */
 function stripSvgPageChrome(svg) {
   svg.querySelectorAll('text').forEach((node) => {
     const y = Number(node.getAttribute('y') || 0);
@@ -1201,7 +1362,7 @@ function enhanceSurahHeaders(svg, page) {
     tSep.setAttribute('font-size', '13');
     tSep.setAttribute('font-weight', '700');
     tSep.setAttribute('fill', '#5a8a6a');
-    tSep.textContent = '  Â·  ';
+    tSep.textContent = '  ·  ';
 
     const tArabic = svg.ownerDocument.createElementNS(SVG_NS, 'tspan');
     tArabic.setAttribute('class', 'alhelmi-surah-arabic');
@@ -1220,7 +1381,7 @@ function enhanceSurahHeaders(svg, page) {
 
 /**
  * Al-Fatihah (halaman 1): asal SVG gabung Bismillah + ayat 2 pada satu baris.
- * Pisahkan seperti mushaf cetak â€” Bismillah atas sekali selepas tajuk surah.
+ * Pisahkan seperti mushaf cetak — Bismillah atas sekali selepas tajuk surah.
  */
 function fixBismillahLayout(svg, page) {
   if (page !== 1 || svg.querySelector('.alhelmi-bismillah')) return;
@@ -1328,7 +1489,7 @@ function shiftSvgTextsDown(svg, fromText, shift) {
   }
 
   const footer = [...svg.querySelectorAll('text')].find(
-    (el) => el.getAttribute('fill') === '#998d77' && el.textContent.includes('â€”'),
+    (el) => el.getAttribute('fill') === '#998d77' && (el.textContent.includes('—') || el.textContent.includes('-')),
   );
   if (footer) {
     footer.setAttribute('y', String(Number(footer.getAttribute('y')) + shift));
@@ -1483,8 +1644,40 @@ function clampZoom(value) {
 function toggleFullscreen() {
   const target = document.documentElement;
   if (!document.fullscreenElement) {
-    target.requestFullscreen?.();
+    target.requestFullscreen?.()?.then?.(() => setClassroomFullscreen(true));
+    setClassroomFullscreen(true);
   } else {
-    document.exitFullscreen?.();
+    document.exitFullscreen?.()?.then?.(() => setClassroomFullscreen(false));
+    setClassroomFullscreen(false);
   }
+}
+
+function setClassroomFullscreen(active) {
+  document.body.classList.toggle('classroom-fs', Boolean(active));
+  if (active) {
+    // Skrin penuh = mushaf tenang; buka toolbar hanya bila parent hantar mode kawal.
+    setMenuCollapsed(true, { persist: false });
+  }
+  syncTopbarHeight();
+}
+
+function initClassroomParentBridge() {
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.source !== 'alhelmi-classroom') return;
+    if (data.type === 'classroom-fullscreen') {
+      setClassroomFullscreen(Boolean(data.active));
+    }
+    // App conductor: baca = chrome tenang; kawal = toolbar guru terbuka.
+    if (data.type === 'classroom-mode') {
+      const collapse = data.collapseChrome === true || data.mode === 'baca';
+      setMenuCollapsed(collapse, { persist: false });
+      document.body.classList.toggle('classroom-mode-baca', data.mode === 'baca');
+      document.body.classList.toggle('classroom-mode-kawal', data.mode === 'kawal');
+      syncTopbarHeight();
+    }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    setClassroomFullscreen(Boolean(document.fullscreenElement));
+  });
 }

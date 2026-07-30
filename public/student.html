@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alquran Room — Pelajar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/classroom.css?v=22" />
+</head>
+<body class="role-student student-shell">
+  <div class="student-view">
+    <iframe id="mushaf-frame" title="Mushaf pelajar" src="about:blank" allow=""></iframe>
+
+    <div class="pip-teacher pip-student" id="pip-teacher-remote" role="group" aria-label="Kamera guru">
+      <div class="pip-chrome">
+        <span class="pip-label">Guru</span>
+      </div>
+      <div class="pip-media is-idle" id="teacher-media">
+        <video id="teacher-video" class="pip-video" playsinline autoplay></video>
+        <div class="pip-fallback">G</div>
+      </div>
+      <span class="pip-hint" id="teacher-av-hint">Menunggu guru…</span>
+    </div>
+
+    <div class="pip-self" id="pip-self" role="group" aria-label="Kamera anda">
+      <div class="pip-chrome">
+        <span class="pip-label">Anda</span>
+        <div class="pip-actions">
+          <button type="button" class="pip-btn" id="self-mic" title="Mikrofon" aria-pressed="true">🎤</button>
+          <button type="button" class="pip-btn" id="self-cam" title="Kamera" aria-pressed="true">📷</button>
+        </div>
+      </div>
+      <div class="pip-media is-idle" id="self-media">
+        <video id="self-video" class="pip-video" playsinline autoplay muted></video>
+        <div class="pip-fallback" id="self-fallback">P</div>
+      </div>
+      <span class="pip-hint" id="self-av-status">Menyambung…</span>
+    </div>
+
+    <footer class="student-status" id="student-status">
+      Status Kelas: Sedang Berlangsung · Giliran Anda: Menunggu
+    </footer>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/student.js?v=4"></script>
+</body>
+</html>

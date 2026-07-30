@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Fraunces:opsz,wght@9..144,560;9..144,650&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=p3-room-gate-1" />
+  <link rel="stylesheet" href="/styles.css?v=embed-fix-14" />
 </head>
 <body>
   <header class="topbar">
@@ -35,128 +35,7 @@
     </div>
   </header>
 
-  <section class="toolbar teacher-only" id="teacher-toolbar">
-    <div class="toolbar-compact" role="toolbar" aria-label="Kawalan guru">
-      <div class="seg seg-pill seg-compact" role="group" aria-label="Mod pengajaran">
-        <button type="button" class="seg-btn active" data-mode="bacaan" title="Mod bacaan">Bacaan</button>
-        <button type="button" class="seg-btn" data-mode="hafazan" title="Mod hafazan">Hafazan</button>
-      </div>
-
-      <span class="toolbar-rule" aria-hidden="true"></span>
-
-      <div class="seg seg-tabs seg-compact" role="tablist" aria-label="Jenis carian">
-        <button type="button" class="seg-btn active" data-nav-tab="surah" role="tab" aria-selected="true">Surah</button>
-        <button type="button" class="seg-btn" data-nav-tab="juz" role="tab" aria-selected="false">Juz</button>
-        <button type="button" class="seg-btn" data-nav-tab="page" role="tab" aria-selected="false">Hal.</button>
-      </div>
-
-      <div class="toolbar-nav-slot">
-        <div id="nav-panel-surah" class="nav-panel nav-panel-inline" role="tabpanel">
-          <div class="search-combo" id="surah-combo">
-            <div class="search-input-wrap">
-              <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-              <input
-                type="search"
-                id="surah-search"
-                class="search-input"
-                placeholder="Cari surah…"
-                autocomplete="off"
-                aria-autocomplete="list"
-                aria-controls="surah-results"
-                aria-expanded="false" />
-            </div>
-            <ul id="surah-results" class="search-dropdown" role="listbox" hidden></ul>
-          </div>
-          <p class="nav-hint" id="surah-selection-hint" hidden>Halaman mula surah dipilih</p>
-        </div>
-
-        <div id="nav-panel-juz" class="nav-panel nav-panel-inline" hidden role="tabpanel">
-          <div class="search-input-wrap search-input-wrap-compact">
-            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-            <input type="search" id="juz-search" class="search-input" placeholder="Juzuk…" autocomplete="off" />
-          </div>
-          <div id="juz-grid" class="juz-grid juz-grid-compact" role="listbox" aria-label="Pilih juzuk"></div>
-        </div>
-
-        <div id="nav-panel-page" class="nav-panel nav-panel-inline" hidden role="tabpanel">
-          <div class="page-stepper">
-            <button type="button" class="btn btn-icon" id="page-input-dec" aria-label="Kurangkan halaman">−</button>
-            <input type="number" id="page-input" class="page-input" min="1" max="604" value="1" inputmode="numeric" aria-label="Nombor halaman" />
-            <button type="button" class="btn btn-icon" id="page-input-inc" aria-label="Tambah halaman">+</button>
-          </div>
-        </div>
-      </div>
-
-      <button type="button" id="go-nav" class="btn btn-primary btn-go btn-go-compact" title="Pergi">
-        Pergi
-      </button>
-
-      <span class="toolbar-rule" aria-hidden="true"></span>
-
-      <div class="btn-group btn-group-compact" aria-label="Zoom">
-        <button type="button" id="zoom-out" class="btn btn-icon" title="Kecilkan">−</button>
-        <span id="zoom-label" class="value-chip">100%</span>
-        <button type="button" id="zoom-in" class="btn btn-icon" title="Besarkan">+</button>
-      </div>
-
-      <div class="btn-group btn-group-compact" aria-label="Halaman">
-        <button type="button" id="page-prev" class="btn btn-icon" aria-label="Halaman sebelum">‹</button>
-        <span id="page-label" class="value-chip value-chip-wide">1 / 604</span>
-        <button type="button" id="page-next" class="btn btn-icon" aria-label="Halaman seterusnya">›</button>
-      </div>
-
-      <label class="toggle toggle-compact" title="Sync zoom pelajar">
-        <input type="checkbox" id="sync-zoom" />
-        <span class="toggle-track"></span>
-        <span class="toggle-text">Sync</span>
-      </label>
-
-      <button type="button" id="toggle-hide" class="btn btn-warning btn-compact">Sembunyi mushaf</button>
-
-      <button type="button" class="btn btn-ghost btn-compact" id="toolbar-more-btn" aria-expanded="false" aria-controls="toolbar-more">
-        Lagi
-      </button>
-    </div>
-
-    <div class="toolbar-more" id="toolbar-more" hidden>
-      <label class="field field-scope field-inline">
-        <span class="field-label">Skop hafazan</span>
-        <input type="text" id="scope-input" placeholder="Contoh: Yasin 1–5" />
-      </label>
-      <button type="button" id="clear-highlight" class="btn btn-soft btn-compact">Kosongkan highlight</button>
-      <button type="button" id="fullscreen" class="btn btn-ghost btn-compact">Skrin penuh</button>
-    </div>
-  </section>
-
-  <section class="toolbar student-only" id="student-toolbar">
-    <div class="student-bar">
-      <span id="student-mode-label" class="pill">Mod: Bacaan</span>
-
-      <div class="seg seg-pill seg-compact" id="student-follow-seg" role="group" aria-label="Mod paparan mushaf">
-        <button type="button" class="seg-btn active" id="student-mode-free" data-follow="0" title="Baca sendiri">
-          Baca sendiri
-        </button>
-        <button type="button" class="seg-btn" id="student-mode-follow" data-follow="1" title="Ikut halaman guru">
-          Ikut guru
-        </button>
-      </div>
-
-      <div class="btn-group btn-group-compact" id="student-page-nav" aria-label="Halaman">
-        <button type="button" id="student-page-prev" class="btn btn-icon" aria-label="Halaman sebelum">‹</button>
-        <span id="student-page-label" class="value-chip value-chip-wide">1 / 604</span>
-        <button type="button" id="student-page-next" class="btn btn-icon" aria-label="Halaman seterusnya">›</button>
-      </div>
-
-      <div class="btn-group">
-        <button type="button" id="student-zoom-out" class="btn btn-icon">−</button>
-        <span id="student-zoom-label" class="value-chip">100%</span>
-        <button type="button" id="student-zoom-in" class="btn btn-icon">+</button>
-      </div>
-      <button type="button" id="student-fullscreen" class="btn btn-ghost">Skrin penuh</button>
-      <p class="student-hint" id="student-hint">Baca sendiri — pilih “Ikut guru” jika mahu ikut halaman kelas.</p>
-    </div>
-  </section>
-
+  
   <main class="stage">
     <!-- OWASP A01 / ISO A.5.15: bilik kelas tanpa JWT — tiada shell sync -->
     <div id="class-gate" class="class-gate" hidden>
@@ -205,11 +84,138 @@
     </div>
   </main>
 
+  <section class="toolbar teacher-only" id="teacher-toolbar">
+    <div class="toolbar-compact" role="toolbar" aria-label="Kawalan guru">
+      <div class="toolbar-group" aria-label="Navigasi mushaf">
+        <span class="toolbar-group-label">Pergi</span>
+        <div class="seg seg-tabs seg-compact" role="tablist" aria-label="Jenis carian">
+          <button type="button" class="seg-btn active" data-nav-tab="surah" role="tab" aria-selected="true">Surah</button>
+          <button type="button" class="seg-btn" data-nav-tab="juz" role="tab" aria-selected="false">Juz</button>
+          <button type="button" class="seg-btn" data-nav-tab="page" role="tab" aria-selected="false">Hal.</button>
+        </div>
+
+        <div class="toolbar-nav-slot">
+          <div id="nav-panel-surah" class="nav-panel nav-panel-inline" role="tabpanel">
+            <div class="search-combo" id="surah-combo">
+              <div class="search-input-wrap">
+                <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                <input
+                  type="search"
+                  id="surah-search"
+                  class="search-input"
+                  placeholder="Cari surah…"
+                  autocomplete="off"
+                  aria-autocomplete="list"
+                  aria-controls="surah-results"
+                  aria-expanded="false" />
+              </div>
+              <ul id="surah-results" class="search-dropdown" role="listbox" hidden></ul>
+            </div>
+            <p class="nav-hint" id="surah-selection-hint" hidden>Halaman mula surah dipilih</p>
+          </div>
+
+          <div id="nav-panel-juz" class="nav-panel nav-panel-inline" hidden role="tabpanel">
+            <div class="search-input-wrap search-input-wrap-compact">
+              <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              <input type="search" id="juz-search" class="search-input" placeholder="Juzuk…" autocomplete="off" />
+            </div>
+            <div id="juz-grid" class="juz-grid juz-grid-compact" role="listbox" aria-label="Pilih juzuk"></div>
+          </div>
+
+          <div id="nav-panel-page" class="nav-panel nav-panel-inline" hidden role="tabpanel">
+            <div class="page-stepper">
+              <button type="button" class="btn btn-icon" id="page-input-dec" aria-label="Kurangkan halaman">−</button>
+              <input type="number" id="page-input" class="page-input" min="1" max="604" value="1" inputmode="numeric" aria-label="Nombor halaman" />
+              <button type="button" class="btn btn-icon" id="page-input-inc" aria-label="Tambah halaman">+</button>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" id="go-nav" class="btn btn-primary btn-go btn-go-compact" title="Pergi">
+          Pergi
+        </button>
+
+        <div class="btn-group btn-group-compact" aria-label="Halaman">
+          <button type="button" id="page-prev" class="btn btn-icon" aria-label="Halaman sebelum">‹</button>
+          <span id="page-label" class="value-chip value-chip-wide">1 / 604</span>
+          <button type="button" id="page-next" class="btn btn-icon" aria-label="Halaman seterusnya">›</button>
+        </div>
+      </div>
+
+      <span class="toolbar-rule" aria-hidden="true"></span>
+
+      <div class="toolbar-group" aria-label="Paparan">
+        <span class="toolbar-group-label">Paparan</span>
+        <div class="seg seg-pill seg-compact" role="group" aria-label="Mod pengajaran">
+          <button type="button" class="seg-btn active" data-mode="bacaan" title="Mod bacaan">Bacaan</button>
+          <button type="button" class="seg-btn" data-mode="hafazan" title="Mod hafazan">Hafazan</button>
+        </div>
+
+        <div class="btn-group btn-group-compact" aria-label="Zoom">
+          <button type="button" id="zoom-out" class="btn btn-icon" title="Kecilkan">−</button>
+          <span id="zoom-label" class="value-chip">100%</span>
+          <button type="button" id="zoom-in" class="btn btn-icon" title="Besarkan">+</button>
+        </div>
+
+        <button type="button" id="toggle-hide" class="btn btn-warning btn-compact">Sembunyi mushaf</button>
+
+        <button type="button" class="btn btn-ghost btn-compact" id="toolbar-more-btn" aria-expanded="false" aria-controls="toolbar-more">
+          Lagi
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-more" id="toolbar-more" hidden>
+      <label class="toggle toggle-compact" title="Sync saiz zum ke pelajar">
+        <input type="checkbox" id="sync-zoom" />
+        <span class="toggle-track"></span>
+        <span class="toggle-text">Sync zum</span>
+      </label>
+      <label class="field field-scope field-inline">
+        <span class="field-label">Skop hafazan</span>
+        <input type="text" id="scope-input" placeholder="Contoh: Yasin 1–5" />
+      </label>
+      <button type="button" id="clear-highlight" class="btn btn-soft btn-compact">Kosongkan highlight</button>
+      <button type="button" id="fullscreen" class="btn btn-ghost btn-compact">Skrin penuh</button>
+    </div>
+  </section>
+
+  <section class="toolbar student-only" id="student-toolbar">
+    <div class="student-bar">
+      <span id="student-mode-label" class="pill">Mod: Bacaan</span>
+
+      <div class="seg seg-pill seg-compact" id="student-follow-seg" role="group" aria-label="Mod paparan mushaf">
+        <button type="button" class="seg-btn active" id="student-mode-free" data-follow="0" title="Baca sendiri">
+          Baca sendiri
+        </button>
+        <button type="button" class="seg-btn" id="student-mode-follow" data-follow="1" title="Ikut halaman guru">
+          Ikut guru
+        </button>
+      </div>
+
+      <div class="btn-group btn-group-compact" id="student-page-nav" aria-label="Halaman">
+        <button type="button" id="student-page-prev" class="btn btn-icon" aria-label="Halaman sebelum">‹</button>
+        <span id="student-page-label" class="value-chip value-chip-wide">1 / 604</span>
+        <button type="button" id="student-page-next" class="btn btn-icon" aria-label="Halaman seterusnya">›</button>
+      </div>
+
+      <div class="btn-group">
+        <button type="button" id="student-zoom-out" class="btn btn-icon">−</button>
+        <span id="student-zoom-label" class="value-chip">100%</span>
+        <button type="button" id="student-zoom-in" class="btn btn-icon">+</button>
+      </div>
+      <button type="button" id="student-fullscreen" class="btn btn-ghost">Skrin penuh</button>
+      <p class="student-hint" id="student-hint">Baca sendiri — pilih “Ikut guru” jika mahu ikut halaman kelas.</p>
+    </div>
+  </section>
+
+
+
   <footer class="footer">
     <span id="location-label">Lokasi: —</span>
   </footer>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/app.js?v=p3-room-gate-1"></script>
+  <script type="module" src="/app.js?v=embed-fix-14"></script>
 </body>
 </html>

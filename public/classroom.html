@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alquran Room — Guru</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Fraunces:opsz,wght@9..144,560;9..144,650&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/classroom.css?v=22" />
+</head>
+<body class="role-teacher">
+  <div class="room-shell">
+    <aside class="teacher-panel" aria-label="Panel kawalan guru">
+      <header class="panel-header">
+        <div>
+          <p class="panel-kicker">Kelas Talaqqi</p>
+          <h1 id="class-title">Kelas A</h1>
+          <p class="panel-sub" id="teacher-name">Ustaz (lokal)</p>
+        </div>
+        <span class="live-pill" id="conn-pill">Menyambung…</span>
+      </header>
+
+      <label class="sync-card" title="Pelajar ikut halaman guru">
+        <div>
+          <strong id="page-sync-label">Mod Sync: Aktif</strong>
+          <span>Skrin pelajar ikut kawalan guru</span>
+        </div>
+        <input type="checkbox" id="page-sync" checked />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+
+      <section class="fifo-section">
+        <div class="fifo-head">
+          <h2>Senarai Giliran (FIFO)</h2>
+          <span id="fifo-count">0/0</span>
+        </div>
+        <div id="active-reader-slot" class="active-slot" hidden>
+          <div class="active-cam" aria-hidden="true">
+            <video id="active-reader-video" class="active-reader-video" playsinline autoplay></video>
+            <span id="active-initials">A</span>
+          </div>
+          <div class="active-meta">
+            <strong id="active-name">—</strong>
+            <span id="active-av-label">Sedang Baca</span>
+          </div>
+          <button type="button" class="btn btn-end" id="btn-end-turn">Tamat Giliran</button>
+        </div>
+        <ul id="fifo-list" class="fifo-list" aria-label="Giliran menunggu"></ul>
+        <button type="button" class="btn btn-ghost btn-block" id="btn-reset-fifo">Reset senarai demo</button>
+      </section>
+
+      <div class="panel-footer">
+        <button type="button" class="btn btn-danger btn-block" id="btn-mute-all">
+          Matikan Mic Semua Pelajar
+        </button>
+        <p class="hint" id="mute-hint">Kecuali pelajar yang sedang baca — mikrofon pelajar lain dimatikan.</p>
+        <a class="student-link" id="student-link" href="/student?room=kelas-a" target="_blank" rel="noopener">
+          Buka paparan pelajar ↗
+        </a>
+      </div>
+    </aside>
+
+    <section class="mushaf-panel" aria-label="Paparan mushaf dikongsi">
+      <header class="mushaf-panel-bar">
+        <span>Mushaf Madinah</span>
+        <span id="room-label">Bilik: —</span>
+      </header>
+
+      <div class="mushaf-stage">
+        <iframe
+          id="mushaf-frame"
+          title="Mushaf kelas"
+          src="about:blank"
+          allow=""
+        ></iframe>
+      </div>
+
+      <!-- Dock di SHELL (bawah iframe) — bukan dalam mushaf -->
+      <footer class="mushaf-dock" aria-label="Kawalan mushaf">
+        <div class="dock-seg" role="tablist" aria-label="Jenis carian">
+          <button type="button" class="dock-seg-btn active" data-nav="surah">Surah</button>
+          <button type="button" class="dock-seg-btn" data-nav="juz">Juz</button>
+          <button type="button" class="dock-seg-btn" data-nav="page">Hal.</button>
+        </div>
+
+        <div class="dock-search-wrap">
+          <input type="search" id="dock-search" class="dock-search" placeholder="Cari surah / juz / halaman…" autocomplete="off" />
+          <ul id="dock-results" class="dock-results" hidden></ul>
+        </div>
+
+        <button type="button" class="dock-btn dock-btn-go" id="dock-go">Pergi</button>
+
+        <div class="dock-chip" aria-label="Halaman">
+          <button type="button" class="dock-icon" id="dock-page-prev" aria-label="Halaman sebelum">‹</button>
+          <span id="dock-page-label">1 / 604</span>
+          <button type="button" class="dock-icon" id="dock-page-next" aria-label="Halaman seterusnya">›</button>
+        </div>
+
+        <div class="dock-seg" role="group" aria-label="Mod">
+          <button type="button" class="dock-seg-btn active" data-mode="bacaan">Bacaan</button>
+          <button type="button" class="dock-seg-btn" data-mode="hafazan">Hafazan</button>
+        </div>
+
+        <div class="dock-chip" aria-label="Zum">
+          <button type="button" class="dock-icon" id="dock-zoom-out" aria-label="Kecilkan">−</button>
+          <span id="dock-zoom-label">100%</span>
+          <button type="button" class="dock-icon" id="dock-zoom-in" aria-label="Besarkan">+</button>
+        </div>
+      </footer>
+    </section>
+
+    <!-- PiP terapung seluruh skrin (bukan terhad ke mushaf) -->
+    <div class="pip-teacher" id="pip-teacher" title="Seret ke mana-mana pada skrin" role="group" aria-label="Kamera guru — boleh diseret ke mana-mana pada skrin">
+      <div class="pip-chrome">
+        <span class="pip-label">Guru</span>
+        <div class="pip-actions">
+          <button type="button" class="pip-btn" id="pip-mic" title="Mikrofon on/off" aria-label="Mikrofon" aria-pressed="true">🎤</button>
+          <button type="button" class="pip-btn" id="pip-cam" title="Kamera on/off" aria-label="Kamera" aria-pressed="true">📷</button>
+          <button type="button" class="pip-btn" id="pip-shrink" title="Kecilkan" aria-label="Kecilkan">−</button>
+          <button type="button" class="pip-btn" id="pip-grow" title="Besarkan" aria-label="Besarkan">+</button>
+          <button type="button" class="pip-btn" id="pip-large" title="Saiz besar (bukan skrin penuh)" aria-label="Saiz besar">▣</button>
+        </div>
+      </div>
+      <div class="pip-media">
+        <video id="pip-local-video" class="pip-video" playsinline autoplay muted></video>
+        <div class="pip-fallback" id="pip-fallback">UF</div>
+      </div>
+      <span class="pip-hint" id="pip-av-status">Seret ke mana-mana pada skrin</span>
+      <span class="pip-resize" id="pip-resize" title="Seret untuk ubah saiz" aria-hidden="true"></span>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/classroom.js?v=22"></script>
+</body>
+</html>

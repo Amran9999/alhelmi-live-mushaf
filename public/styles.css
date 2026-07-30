@@ -203,14 +203,14 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   position: sticky;
   top: var(--topbar-height, var(--topbar-h));
   z-index: 30;
-  background: rgba(245, 245, 247, 0.92);
+  background: rgba(245, 245, 247, 0.96);
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
   border-bottom: 1px solid var(--border);
-  max-height: 96px;
+  /* Jangan max-height ketat — ia potong dropdown Surah / panel Lagi (nampak butang “tak jalan”). */
+  max-height: none;
   overflow: visible;
   transition:
-    max-height 0.28s var(--transition),
     opacity 0.2s ease,
     border-color 0.2s ease;
 }
@@ -229,15 +229,29 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
 
 .toolbar-compact {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-height: var(--toolbar-h);
+  padding: 8px 10px;
+  overflow: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  min-height: var(--toolbar-h);
-  padding: 5px 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+}
+
+.toolbar-group-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #64748b);
+  margin-right: 2px;
 }
 
 .toolbar-rule {
@@ -1520,10 +1534,574 @@ body.class-gate-active .stage {
   gap: 5px;
 }
 
-.role-teacher #teacher-toolbar {
-  max-height: 48px;
+/* —— Skrin penuh / mode Baca: mushaf tenang, chrome nipis —— */
+body.classroom-fs .topbar,
+body.classroom-mode-baca .topbar {
+  padding: 0.35rem 0.75rem;
+  min-height: 36px;
 }
 
-.role-teacher #teacher-toolbar:has(.toolbar-more:not([hidden])) {
-  max-height: 96px;
+body.classroom-fs .brand-text,
+body.classroom-mode-baca .brand-text {
+  font-size: 0.78rem;
+}
+
+body.classroom-fs.role-teacher.menu-collapsed #teacher-toolbar,
+body.classroom-mode-baca.role-teacher #teacher-toolbar {
+  display: none !important;
+}
+
+/*
+ * Viewer kelas: rantaian tinggi MESTI terikat ke viewport iframe.
+ * Jika html/body berkembang ikut SVG, overflow:hidden potong tanpa scrollbar.
+ */
+html:has(body.classroom-mode-baca) {
+  height: 100%;
+  overflow: hidden;
+}
+
+body.classroom-mode-baca.role-teacher,
+body.classroom-mode-baca.role-student,
+body.classroom-fs.classroom-mode-baca.role-teacher,
+body.classroom-fs.classroom-mode-baca.role-student {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #e8e0d4;
+}
+
+body.classroom-mode-baca .topbar,
+body.classroom-fs.classroom-mode-baca .topbar,
+body.classroom-mode-baca .footer,
+body.classroom-fs.classroom-mode-baca .footer,
+body.classroom-mode-baca #student-toolbar,
+body.classroom-fs.classroom-mode-baca #student-toolbar,
+body.classroom-mode-baca #teacher-toolbar,
+body.classroom-fs.classroom-mode-baca #teacher-toolbar {
+  display: none !important;
+}
+
+body.classroom-fs.role-teacher.menu-collapsed .stage,
+body.classroom-mode-baca .stage {
+  top: 0 !important;
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 100%;
+  height: auto;
+  padding: 0.35rem;
+  margin: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: hidden;
+  background: #e8e0d4;
+}
+
+body.classroom-mode-baca .mushaf-frame,
+body.classroom-fs.classroom-mode-baca .mushaf-frame {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 0;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  gap: 0.5rem;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+body.classroom-mode-baca .mushaf-nav-btn,
+body.classroom-fs.classroom-mode-baca .mushaf-nav-btn {
+  display: grid !important;
+  align-self: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  z-index: 6;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  color: #0f6b4c;
+}
+
+/*
+ * SKROL di .viewer-shell — basis 0 supaya tinggi dihadkan flex parent,
+ * bukan ikut tinggi intrinsik SVG.
+ */
+body.classroom-mode-baca .viewer-shell,
+body.classroom-fs.classroom-mode-baca .viewer-shell {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: min(900px, calc(100% - 100px));
+  height: auto;
+  max-height: none;
+  margin: 0 auto;
+  display: block;
+  border-radius: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #d4ecd4;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  outline: none;
+}
+
+body.classroom-mode-baca .mushaf-context-bar,
+body.classroom-fs.classroom-mode-baca .mushaf-context-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+body.classroom-mode-baca .viewer-scale,
+body.classroom-fs.classroom-mode-baca .viewer-scale {
+  display: block;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 12px 24px;
+  overflow: visible !important;
+  background: #d4ecd4;
+}
+
+body.classroom-mode-baca .mushaf-host,
+body.classroom-fs.classroom-mode-baca .mushaf-host {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+body.classroom-mode-baca .mushaf-host .mushaf-svg,
+body.classroom-fs.classroom-mode-baca .mushaf-host .mushaf-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mode Kawal lama diganti oleh dock bawah — lihat seksyen embed-dock di bawah */
+body.classroom-fs.classroom-mode-kawal.role-teacher:not(.menu-collapsed) #teacher-toolbar,
+body.classroom-mode-kawal.role-teacher:not(.menu-collapsed) #teacher-toolbar {
+  max-height: none;
+  overflow: visible;
+}
+
+body.classroom-fs.classroom-mode-baca .stage,
+body.classroom-mode-baca .stage {
+  padding-bottom: 4px;
+}
+
+/* ============================================================
+   Embed dual-panel: dock kawalan DI BAWAH mushaf (bukan atas)
+   ============================================================ */
+body.classroom-fs.classroom-mode-kawal,
+body.classroom-mode-kawal {
+  --dock-bg: #1a1f24;
+  --dock-chip: #242b33;
+  --dock-line: rgba(255, 255, 255, 0.1);
+  --dock-text: #eef2f6;
+  --dock-muted: #9aa7b5;
+  --dock-accent: #2f9e6b;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: #e8e0d4;
+}
+
+body.classroom-fs.classroom-mode-kawal .topbar,
+body.classroom-mode-kawal .topbar,
+body.classroom-fs.classroom-mode-kawal .footer,
+body.classroom-mode-kawal .footer {
+  display: none !important;
+}
+
+/* Standalone (bukan embed): toolbar kekal di atas via order */
+body:not(.classroom-mode-kawal):not(.classroom-fs) .topbar { order: 0; }
+body:not(.classroom-mode-kawal):not(.classroom-fs) #teacher-toolbar,
+body:not(.classroom-mode-kawal):not(.classroom-fs) #student-toolbar { order: 1; }
+body:not(.classroom-mode-kawal):not(.classroom-fs) .stage { order: 2; }
+body:not(.classroom-mode-kawal):not(.classroom-fs) .footer { order: 3; }
+
+/* Embed: mushaf penuh, dock bawah */
+body.classroom-mode-kawal.role-teacher,
+body.classroom-fs.classroom-mode-kawal.role-teacher {
+  --topbar-height: 0px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+body.classroom-mode-kawal.role-teacher .stage,
+body.classroom-fs.classroom-mode-kawal.role-teacher .stage {
+  order: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  top: 0 !important;
+  padding: 0;
+  margin: 0;
+  background: #e8e0d4;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  place-items: unset;
+}
+
+body.classroom-mode-kawal.role-teacher #teacher-toolbar,
+body.classroom-fs.classroom-mode-kawal.role-teacher #teacher-toolbar {
+  order: 2;
+  position: relative !important;
+  top: auto !important;
+  bottom: 0;
+  z-index: 50;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  max-height: none;
+  overflow: visible;
+  background: var(--dock-bg);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.2);
+}
+
+body.classroom-mode-kawal .mushaf-frame,
+body.classroom-fs.classroom-mode-kawal .mushaf-frame {
+  background: transparent;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  gap: 0.35rem;
+  padding: 0.35rem 0.4rem 0.25rem;
+  box-sizing: border-box;
+  align-items: stretch;
+}
+
+body.classroom-mode-kawal .viewer-shell,
+body.classroom-fs.classroom-mode-kawal .viewer-shell {
+  box-shadow: 0 8px 28px rgba(40, 32, 20, 0.1);
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+body.classroom-mode-kawal .viewer-scale,
+body.classroom-fs.classroom-mode-kawal .viewer-scale {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+body.classroom-mode-kawal .mushaf-host,
+body.classroom-fs.classroom-mode-kawal .mushaf-host {
+  width: 100%;
+}
+
+body.classroom-mode-kawal .toolbar-compact,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem 0.5rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0.4rem 0.65rem 0.45rem;
+  background: transparent;
+  border: 0;
+  color: var(--dock-text);
+}
+
+body.classroom-mode-kawal .toolbar-group-label,
+body.classroom-fs.classroom-mode-kawal .toolbar-group-label,
+body.classroom-mode-kawal .toolbar-rule,
+body.classroom-fs.classroom-mode-kawal .toolbar-rule,
+body.classroom-mode-kawal .nav-hint,
+body.classroom-fs.classroom-mode-kawal .nav-hint {
+  display: none !important;
+}
+
+body.classroom-mode-kawal .toolbar-group,
+body.classroom-fs.classroom-mode-kawal .toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* Kumpulan visual: nav | halaman | mod | zum | tindakan */
+body.classroom-mode-kawal .toolbar-group[aria-label="Navigasi mushaf"],
+body.classroom-fs.classroom-mode-kawal .toolbar-group[aria-label="Navigasi mushaf"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.classroom-mode-kawal .toolbar-compact .seg,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .seg {
+  background: var(--dock-chip);
+  border: 1px solid var(--dock-line);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+body.classroom-mode-kawal .toolbar-compact .seg-btn,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .seg-btn {
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 0.7rem !important;
+  border-radius: 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--dock-muted) !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+body.classroom-mode-kawal .toolbar-compact .seg-btn.active,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .seg-btn.active {
+  background: var(--dock-accent) !important;
+  color: #04140c !important;
+}
+
+body.classroom-mode-kawal .search-input-wrap,
+body.classroom-fs.classroom-mode-kawal .search-input-wrap {
+  background: var(--dock-chip);
+  border: 1px solid var(--dock-line);
+  border-radius: 10px;
+  min-width: 0 !important;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+body.classroom-mode-kawal .toolbar-nav-slot,
+body.classroom-fs.classroom-mode-kawal .toolbar-nav-slot {
+  flex: 0 1 150px;
+  min-width: 100px;
+  max-width: 168px;
+  position: relative;
+  z-index: 1;
+}
+
+body.classroom-mode-kawal .search-combo,
+body.classroom-fs.classroom-mode-kawal .search-combo {
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+}
+
+body.classroom-mode-kawal .toolbar-compact .search-input,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .search-input {
+  color: var(--dock-text) !important;
+  font-size: 0.78rem !important;
+  background: transparent !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+body.classroom-mode-kawal .toolbar-group[aria-label="Navigasi mushaf"],
+body.classroom-fs.classroom-mode-kawal .toolbar-group[aria-label="Navigasi mushaf"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+}
+
+body.classroom-mode-kawal #go-nav,
+body.classroom-fs.classroom-mode-kawal #go-nav {
+  flex: 0 0 auto !important;
+  position: relative;
+  z-index: 3;
+  margin-left: 2px;
+  padding: 0 0.85rem !important;
+}
+
+body.classroom-mode-kawal .search-icon,
+body.classroom-fs.classroom-mode-kawal .search-icon {
+  color: var(--dock-muted);
+}
+
+body.classroom-mode-kawal .toolbar-compact .btn,
+body.classroom-mode-kawal .toolbar-compact .btn-icon,
+body.classroom-mode-kawal .toolbar-compact .btn-go,
+body.classroom-mode-kawal .toolbar-compact .btn-compact,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-icon,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-go,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-compact {
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--dock-line) !important;
+  background: var(--dock-chip) !important;
+  color: var(--dock-text) !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+body.classroom-mode-kawal .toolbar-compact .btn-go,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-go {
+  background: var(--dock-accent) !important;
+  border-color: transparent !important;
+  color: #04140c !important;
+}
+
+body.classroom-mode-kawal .toolbar-compact .btn-warning,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-warning {
+  background: transparent !important;
+  border-color: rgba(194, 59, 59, 0.45) !important;
+  color: #f0a8a8 !important;
+}
+
+body.classroom-mode-kawal .toolbar-compact .btn-ghost,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-ghost {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--dock-muted) !important;
+}
+
+body.classroom-mode-kawal .toolbar-compact .value-chip,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .value-chip {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--dock-text) !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  min-width: 4.25rem;
+  text-align: center;
+}
+
+body.classroom-mode-kawal .toolbar-compact .btn-group,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-group {
+  background: var(--dock-chip);
+  border: 1px solid var(--dock-line);
+  border-radius: 10px;
+  padding: 2px;
+}
+
+body.classroom-mode-kawal .toolbar-compact .btn-group .btn-icon,
+body.classroom-fs.classroom-mode-kawal .toolbar-compact .btn-group .btn-icon {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+/* Dropdown buka KE ATAS kerana dock di bawah */
+body.classroom-mode-kawal .search-combo,
+body.classroom-fs.classroom-mode-kawal .search-combo,
+body.classroom-mode-kawal .toolbar-nav-slot,
+body.classroom-fs.classroom-mode-kawal .toolbar-nav-slot {
+  position: relative;
+}
+
+body.classroom-mode-kawal .search-dropdown,
+body.classroom-fs.classroom-mode-kawal .search-dropdown {
+  top: auto !important;
+  bottom: calc(100% + 6px) !important;
+  left: 0;
+  right: auto;
+  z-index: 80;
+  max-height: min(42vh, 280px);
+  background: #242b33;
+  border: 1px solid var(--dock-line);
+  color: var(--dock-text);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.35);
+}
+
+body.classroom-mode-kawal .juz-grid-compact,
+body.classroom-fs.classroom-mode-kawal .juz-grid-compact {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: calc(100% + 6px);
+  z-index: 80;
+  max-height: min(42vh, 220px);
+  overflow: auto;
+  padding: 0.5rem;
+  background: #242b33;
+  border: 1px solid var(--dock-line);
+  border-radius: 12px;
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.35);
+}
+
+body.classroom-mode-kawal .toolbar-more,
+body.classroom-fs.classroom-mode-kawal .toolbar-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0.45rem 0.75rem 0.7rem;
+  background: #12161a;
+  border-top: 1px solid var(--dock-line);
+  color: var(--dock-text);
+}
+
+body.classroom-mode-kawal .toolbar-more[hidden],
+body.classroom-fs.classroom-mode-kawal .toolbar-more[hidden] {
+  display: none !important;
+}
+
+body.classroom-mode-kawal .toolbar-more .field-label,
+body.classroom-mode-kawal .toolbar-more .toggle-text,
+body.classroom-fs.classroom-mode-kawal .toolbar-more .field-label,
+body.classroom-fs.classroom-mode-kawal .toolbar-more .toggle-text {
+  color: var(--dock-muted);
+  font-size: 0.75rem;
+}
+
+body.classroom-mode-kawal .toolbar-more input[type="text"],
+body.classroom-fs.classroom-mode-kawal .toolbar-more input[type="text"] {
+  background: var(--dock-chip);
+  border: 1px solid var(--dock-line);
+  border-radius: 8px;
+  color: var(--dock-text);
+  padding: 0.35rem 0.6rem;
+}
+
+/* Embed: jangan biarkan menu-collapsed lumpuhkan dock */
+body.classroom-mode-kawal.menu-collapsed #teacher-toolbar,
+body.classroom-fs.classroom-mode-kawal.menu-collapsed #teacher-toolbar {
+  max-height: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  overflow: visible !important;
+  border-bottom-color: transparent;
+}
+
+/* Mod Sync di panel kiri — buang butang sembunyi dari dock */
+body.classroom-mode-kawal #toggle-hide,
+body.classroom-fs.classroom-mode-kawal #toggle-hide {
+  display: none !important;
+}
+
+/* Buang menu Lagi + panel ekstra (ambil ruang menegak) */
+body.classroom-mode-kawal #toolbar-more-btn,
+body.classroom-fs.classroom-mode-kawal #toolbar-more-btn,
+body.classroom-mode-kawal #toolbar-more,
+body.classroom-fs.classroom-mode-kawal #toolbar-more {
+  display: none !important;
 }

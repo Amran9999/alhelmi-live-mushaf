@@ -2,7 +2,7 @@
   "name": "alhelmi-live-mushaf",
   "version": "0.1.0",
   "private": true,
-  "description": "AlHelmi Live Mushaf — sync guru/pelajar, zoom, hide hafazan",
+  "description": "AlHelmi Kelas Talaqqi — dual-panel, mushaf sync, FIFO, kamera",
   "type": "module",
   "scripts": {
     "start": "node server.js",

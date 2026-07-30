@@ -1,78 +1,54 @@
-# AlHelmi Live Mushaf
+# AlHelmi Live Mushaf — Kelas Talaqqi
 
-Mushaf interaktif untuk kelas AlHelmi — sync guru/pelajar, zoom +/-, hide hafazan.
-
-Spesifikasi penuh: [docs/ALHELMI-LIVE-MUSHAF.md](../docs/ALHELMI-LIVE-MUSHAF.md)
-
-## Ciri (v0.3)
-
-- **Paparan SVG mushaf Medina** — halaman penuh seperti cetakan (bukan font QCF web)
-- **2 mod:** Bacaan & Hafazan — 604 halaman Uthmani
-- **Highlight ayat** — guru klik ayat pada halaman (sync pelajar)
-- **Zoom** `−` / `+` (70%–180%)
-- **Sync zoom** opsyenal guru → pelajar
-- **Navigasi guru:** tab **Surah** (cari + senarai), **Juzuk** (1–30), **Halaman** (1–604) — lompat ke mula surah/juzuk/halaman
-- **Highlight** klik perkataan (guru)
-- **WebSocket** bilik mengikut `?room=`
+Dual-panel guru + mushaf Madinah sync + FIFO + kamera/mikrofon.
 
 ## Jalankan (dev)
 
-```bash
+```powershell
 cd D:\mushaf
-npm install   # pertama kali
-npm run dev
+npm install
+.\Start-Mushaf.ps1
+# atau: npm run dev
 ```
-
-**Lokasi projek:** `D:\mushaf` (Windows) · `/mnt/d/mushaf` (WSL)
 
 | Peranan | URL |
 |---------|-----|
-| Guru | http://localhost:3090/?room=demo&role=teacher |
-| Pelajar | http://localhost:3090/?room=demo&role=student |
+| **Guru** (dual-panel) | http://localhost:3090/?room=kelas-a |
+| **Pelajar** | http://localhost:3090/student?room=kelas-a |
+| Mushaf sahaja | http://localhost:3090/mushaf?room=kelas-a&role=teacher&local=1 |
 
-## Embed Moodle (Label)
+## Production (`quran.alhelmi.com`)
 
-```html
-<iframe
-  src="https://quran.alhelmi.com/?room=KELAS-ID&role=student"
-  width="100%"
-  height="90vh"
-  style="border:none; min-height:600px;"
-  title="Mushaf Kelas">
-</iframe>
-```
-
-## Production
-
-Deploy pada Server 1 (`app`) bersama Moodle. Proxy Nginx ke port `3090` atau Docker.
-
-**Dev + Cloudflare Tunnel (sekarang):**
-
-```powershell
-# Terminal 1 — mushaf
-D:\mushaf\Start-Mushaf.ps1
-# atau: scripts\Start-MushafDev.ps1 (background)
-
-# Kemas kini tunnel + DNS (sekali / selepas reboot)
-cd C:\Users\amran\projects\alhelmi-platform\scripts
-.\sync-tunnel-config.ps1 -RegisterDns
-cloudflared tunnel run alhelmi-learn
-```
+Port **3090** — tunnel/Nginx kekal sama. UI `/` kini bilik kelas (bukan mushaf penuh sahaja).
 
 | URL public | Peranan |
 |------------|---------|
-| https://quran.alhelmi.com/?room=KELAS-ID&role=teacher | Guru |
-| https://quran.alhelmi.com/?room=KELAS-ID&role=student | Pelajar |
+| https://quran.alhelmi.com/?room=KELAS&token=JWT | Guru |
+| https://quran.alhelmi.com/student?room=KELAS&token=JWT | Pelajar |
+| https://quran.alhelmi.com/?room=KELAS&role=student&token=JWT | Redirect → /student |
 
-`room` mesti **sama** untuk guru dan pelajar (contoh shortname kursus Moodle).
+**Auth:** `MUSHAF_JWT_SECRET` dalam `.env` (sama dengan portal `app.alhelmi.com`).  
+Tanpa JWT + `NODE_ENV` bukan production → ujian tempatan dengan `?role=`.
 
-```bash
-PORT=3090 npm start
+```powershell
+# Terminal 1 — app
+.\Start-Mushaf.ps1
+
+# Terminal 2 — tunnel (jika guna Cloudflare)
+cloudflared tunnel run alhelmi-learn
 ```
 
-Health check: `GET /health`
+Health: `GET /health`
+
+## Ciri
+
+- Panel kiri: Mod Sync, FIFO, matikan mic pelajar
+- Panel kanan: mushaf + dock navigasi + PiP kamera (boleh seret/saiz)
+- Pelajar: mushaf sync + video guru + kamera sendiri
+- WebSocket sync halaman / highlight / zoom
 
 ## Stack
 
-- [open-quran-view](https://github.com/adelpro/open-quran-view) — mushaf Uthmani
-- Express + Socket.io — sync bilik
+- Express + Socket.io
+- SVG mushaf Medina (proxy islamic.app)
+- WebRTC peer (guru ↔ pelajar) untuk kamera/mic
