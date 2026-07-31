@@ -23,6 +23,9 @@ const stagePhotoStrip = document.getElementById('stage-photo-strip');
 const studentNotesBar = document.getElementById('student-notes-bar');
 const studentNotesList = document.getElementById('student-notes-list');
 const studentNotesCount = document.getElementById('student-notes-count');
+let archivedNotes = { sessions: [] };
+/** Paparan lokal arkib (walaupun guru masih di Mushaf). */
+let localPreviewUrl = null;
 
 const mushafQs = new URLSearchParams({
   room: roomId,
@@ -31,7 +34,7 @@ const mushafQs = new URLSearchParams({
   viewer: '1',
   userId,
   name,
-  cb: 'classroom-26',
+  cb: 'classroom-27',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -120,24 +123,64 @@ function resolvePreviewPhoto(state) {
   return photos.find((p) => p.id === state.sharedPhotoId) || photos[photos.length - 1];
 }
 
+function flattenArchivedPhotos() {
+  const sessions = Array.isArray(archivedNotes?.sessions) ? archivedNotes.sessions : [];
+  const items = [];
+  sessions.forEach((session, sIndex) => {
+    const photos = Array.isArray(session.photos) ? session.photos : [];
+    photos.forEach((photo, pIndex) => {
+      items.push({
+        ...photo,
+        sessionId: session.sessionId,
+        sessionLabel: session.label || (session.isCurrent ? 'Sesi semasa' : `Sesi ${sIndex + 1}`),
+        noteLabel: `Nota ${pIndex + 1}`,
+      });
+    });
+  });
+  return items;
+}
+
 function renderStudentNotes(state) {
-  const photos = getSharedPhotos(state);
-  if (studentNotesCount) studentNotesCount.textContent = `${photos.length}/10`;
+  const livePhotos = getSharedPhotos(state);
+  const archived = flattenArchivedPhotos();
+  // Utama: arkib per-pelajar (3 sesi). Live bilik sebagai fallback jika arkib belum sampai.
+  const photos = archived.length
+    ? archived
+    : livePhotos.map((photo, index) => ({
+        ...photo,
+        sessionLabel: 'Sesi semasa',
+        noteLabel: `Nota ${index + 1}`,
+      }));
+
+  const sessionCount = archivedNotes?.sessions?.length || (livePhotos.length ? 1 : 0);
+  if (studentNotesCount) {
+    studentNotesCount.textContent = `${sessionCount}/3 sesi · ${photos.length} foto`;
+  }
   if (studentNotesBar) studentNotesBar.hidden = photos.length === 0;
   if (!studentNotesList) return;
   studentNotesList.innerHTML = '';
-  photos.forEach((photo, index) => {
-    const li = document.createElement('li');
-    const active = resolvePreviewPhoto(state)?.id === photo.id;
-    li.className = active ? 'is-active' : '';
-    li.innerHTML = `
-      <button type="button" class="student-note-preview" data-photo-id="${photo.id}">
+
+  let lastSession = '';
+  photos.forEach((photo) => {
+    if (photo.sessionLabel && photo.sessionLabel !== lastSession) {
+      lastSession = photo.sessionLabel;
+      const head = document.createElement('div');
+      head.className = 'student-notes-session';
+      head.textContent = lastSession;
+      studentNotesList.appendChild(head);
+    }
+    const row = document.createElement('div');
+    const active = resolvePreviewPhoto(state)?.id === photo.id
+      || (localPreviewId && localPreviewId === photo.id);
+    row.className = `student-notes-row${active ? ' is-active' : ''}`;
+    row.innerHTML = `
+      <button type="button" class="student-note-preview" data-photo-id="${photo.id}" data-photo-url="${photo.url}">
         <img src="${photo.url}" alt="" />
-        <span>Nota ${index + 1}</span>
+        <span>${photo.noteLabel || 'Nota'}</span>
       </button>
-      <a class="student-note-dl" href="${photo.url}" download="${photo.name || `nota-${index + 1}.jpg`}">Muat turun</a>
+      <a class="student-note-dl" href="${photo.url}" download="${photo.name || 'nota.jpg'}">Muat turun</a>
     `;
-    studentNotesList.appendChild(li);
+    studentNotesList.appendChild(row);
   });
 }
 
@@ -163,15 +206,18 @@ function renderStageStrip(state) {
 
 function applyStageView(state) {
   const photos = getSharedPhotos(state);
-  const showPhoto = state.stageView === 'photo' && photos.length > 0;
+  const teacherPhoto = state.stageView === 'photo' && photos.length > 0;
+  if (teacherPhoto) localPreviewUrl = null;
   const preview = resolvePreviewPhoto(state);
+  const showPhoto = teacherPhoto || Boolean(localPreviewUrl);
+  const displayUrl = localPreviewUrl || preview?.url || null;
 
   frame.classList.toggle('is-hidden-stage', Boolean(showPhoto));
   if (sharedPhotoStage) sharedPhotoStage.hidden = !showPhoto;
 
-  if (showPhoto && sharedPhotoImg && preview) {
-    const next = new URL(preview.url, window.location.origin).href;
-    if (sharedPhotoImg.src !== next) sharedPhotoImg.src = preview.url;
+  if (showPhoto && sharedPhotoImg && displayUrl) {
+    const next = new URL(displayUrl, window.location.origin).href;
+    if (sharedPhotoImg.src !== next) sharedPhotoImg.src = displayUrl;
   } else if (sharedPhotoImg) {
     sharedPhotoImg.removeAttribute('src');
   }
@@ -184,7 +230,13 @@ studentNotesList?.addEventListener('click', (event) => {
   const btn = event.target.closest('[data-photo-id]');
   if (!btn?.dataset.photoId) return;
   localPreviewId = btn.dataset.photoId;
+  localPreviewUrl = btn.dataset.photoUrl || null;
   applyStageView(roomState);
+});
+
+socket.on('student_notes', (payload) => {
+  archivedNotes = payload || { sessions: [] };
+  renderStudentNotes(roomState);
 });
 
 stagePhotoStrip?.addEventListener('click', (event) => {

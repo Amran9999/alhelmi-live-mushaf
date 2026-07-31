@@ -450,15 +450,27 @@ body {
   font-size: 0.78rem;
 }
 .student-notes-head strong { font-size: 0.82rem; }
+.student-notes-hint {
+  margin: 0 0 0.45rem;
+  font-size: 0.65rem;
+  color: #9aa7b5;
+  line-height: 1.35;
+}
 .student-notes-list {
-  list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
-.student-notes-list li {
+.student-notes-session {
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #7dd3a8;
+  letter-spacing: 0.02em;
+}
+.student-notes-row {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.35rem;
@@ -467,7 +479,7 @@ body {
   border-radius: 8px;
   background: rgba(255,255,255,0.04);
 }
-.student-notes-list li.is-active {
+.student-notes-row.is-active {
   outline: 1px solid #2f9e6b;
 }
 .student-note-preview {

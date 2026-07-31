@@ -9,6 +9,11 @@ import {
   resolveMushafJwtSecret,
   verifyHs256Jwt,
 } from './jwt.js';
+import {
+  archivePhotoForStudent,
+  listStudentNotesPayload,
+  MAX_STUDENT_NOTE_SESSIONS,
+} from './student-notes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -330,6 +335,8 @@ function resolveJoinAuth(payload = {}) {
       role: claims.role,
       userId: claims.userId,
       name: claims.name,
+      courseId: claims.courseId,
+      sessionId: claims.sessionId,
     };
   }
 
@@ -350,8 +357,19 @@ function resolveJoinAuth(payload = {}) {
     String(payload.userId || '').trim() ||
     (role === 'teacher' ? 'teacher-local' : `student-${Date.now()}`);
   const name = String(payload.name || '').trim() || (role === 'teacher' ? 'Ustaz' : 'Pelajar');
+  const sessionId =
+    String(payload.sessionId || payload.session_id || '').trim() ||
+    `local-${roomId}-${new Date().toISOString().slice(0, 10)}`;
 
-  return { ok: true, roomId, role, userId, name };
+  return {
+    ok: true,
+    roomId,
+    role,
+    userId,
+    name,
+    courseId: Number(payload.courseId || payload.course_id) || null,
+    sessionId,
+  };
 }
 
 function applyFifoAction(state, action) {
@@ -570,6 +588,84 @@ io.on('connection', (socket) => {
     return peers;
   }
 
+  function listStudentUserIdsInRoom(roomId) {
+    const ids = new Set();
+    const room = io.sockets.adapter.rooms.get(roomId);
+    if (!room) return [];
+    for (const id of room) {
+      const s = io.sockets.sockets.get(id);
+      if (s?.data?.role === 'student' && s.data.userId) ids.add(String(s.data.userId));
+    }
+    return [...ids];
+  }
+
+  function emitStudentNotes(userId) {
+    const payload = listStudentNotesPayload(userId);
+    for (const [, sock] of io.sockets.sockets) {
+      if (sock.data?.userId === String(userId) && sock.data?.role === 'student') {
+        sock.emit('student_notes', payload);
+      }
+    }
+  }
+
+  function resolveSessionIdForRoom(roomId, preferred = null) {
+    if (preferred) return String(preferred);
+    const room = io.sockets.adapter.rooms.get(roomId);
+    if (room) {
+      for (const id of room) {
+        const s = io.sockets.sockets.get(id);
+        if (s?.data?.sessionId) return String(s.data.sessionId);
+      }
+    }
+    return `room-${safeRoomSlug(roomId)}-${new Date().toISOString().slice(0, 10)}`;
+  }
+
+  function sessionIdForUser(roomId, userId) {
+    const room = io.sockets.adapter.rooms.get(roomId);
+    if (room) {
+      for (const id of room) {
+        const s = io.sockets.sockets.get(id);
+        if (s?.data?.userId === String(userId) && s.data.sessionId) {
+          return String(s.data.sessionId);
+        }
+      }
+    }
+    return resolveSessionIdForRoom(roomId);
+  }
+
+  function courseIdForRoom(roomId) {
+    const room = io.sockets.adapter.rooms.get(roomId);
+    if (!room) return null;
+    for (const id of room) {
+      const s = io.sockets.sockets.get(id);
+      if (s?.data?.courseId) return s.data.courseId;
+    }
+    return null;
+  }
+
+  function archiveSharedPhotoToStudents(roomId, entry, state) {
+    const courseId = courseIdForRoom(roomId);
+    const targets = new Set();
+    // Utama: pembaca aktif (giliran talaqqi).
+    if (state.activeReaderId) targets.add(String(state.activeReaderId));
+    // Juga semua pelajar yang sedang dalam bilik.
+    for (const id of listStudentUserIdsInRoom(roomId)) targets.add(id);
+    if (!targets.size) return;
+
+    for (const userId of targets) {
+      const store = archivePhotoForStudent({
+        userId,
+        sessionId: sessionIdForUser(roomId, userId),
+        courseId,
+        roomId,
+        sourceUrl: entry.url,
+        name: entry.name,
+        photoId: entry.id,
+      });
+      if (store) emitStudentNotes(userId);
+    }
+  }
+
   socket.on('join', (payload = {}) => {
     const auth = resolveJoinAuth(payload);
     if (!auth.ok) {
@@ -587,6 +683,8 @@ io.on('connection', (socket) => {
     socket.data.userId = auth.userId;
     socket.data.name = auth.name;
     socket.data.role = role;
+    socket.data.courseId = auth.courseId || null;
+    socket.data.sessionId = auth.sessionId || null;
     socket.join(currentRoom);
 
     const state = getRoom(currentRoom);
@@ -596,9 +694,15 @@ io.on('connection', (socket) => {
       role,
       userId: auth.userId,
       name: auth.name,
+      sessionId: auth.sessionId || null,
+      courseId: auth.courseId || null,
       localDev: LOCAL_DEV,
+      noteSessionsKept: MAX_STUDENT_NOTE_SESSIONS,
     });
     emitAnnotationsSync(currentRoom, state.page || 1, socket);
+    if (role === 'student') {
+      socket.emit('student_notes', listStudentNotesPayload(auth.userId));
+    }
 
     const peers = listRoomPeers(currentRoom).filter((p) => p.socketId !== socket.id);
     socket.emit('av-roster', peers);
@@ -752,11 +856,22 @@ io.on('connection', (socket) => {
       if (dropped?.url) removeSharedPhotoFile(dropped.url);
     }
     const next = withActiveSharedPhoto(state, photos, entry.id);
-    publishRoom(currentRoom, {
+    const published = publishRoom(currentRoom, {
       ...next,
       stageView: showNow ? 'photo' : state.stageView === 'photo' ? 'photo' : 'mushaf',
       updatedAt: Date.now(),
     });
+    // Arkib per pelajar (kekal 3 sesi) — fail disalin, tidak hilang bila galeri bilik dikosongkan.
+    try {
+      archiveSharedPhotoToStudents(currentRoom, entry, published);
+    } catch (err) {
+      console.error('archive student notes', err);
+    }
+  });
+
+  socket.on('notes_list', () => {
+    if (role !== 'student' || !socket.data.userId) return;
+    socket.emit('student_notes', listStudentNotesPayload(socket.data.userId));
   });
 
   /** Guru pilih foto aktif dalam galeri (untuk paparan Foto). */

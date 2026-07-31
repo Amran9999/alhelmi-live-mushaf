@@ -34,6 +34,7 @@ Write-Host ""
 $files = @(
   "server.js",
   "jwt.js",
+  "student-notes.js",
   "package.json",
   "package-lock.json"
 )

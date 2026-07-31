@@ -49,11 +49,16 @@ export function assertMushafClaims(claims) {
   const role = claims.role === 'teacher' ? 'teacher' : 'student';
   const sub = String(claims.sub || '').trim();
   if (!room || !sub) return null;
+  const sessionRaw = claims.session_id ?? claims.sessionId;
+  const sessionId = sessionRaw != null && String(sessionRaw).trim()
+    ? String(sessionRaw).trim()
+    : null;
   return {
     room,
     role,
     userId: sub,
     name: String(claims.name || '').trim(),
     courseId: Number(claims.course_id) || null,
+    sessionId,
   };
 }

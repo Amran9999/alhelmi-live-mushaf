@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/classroom.css?v=32" />
+  <link rel="stylesheet" href="/classroom.css?v=33" />
 </head>
 <body class="role-student student-shell">
   <div class="student-view">
@@ -19,10 +19,11 @@
 
     <aside id="student-notes-bar" class="student-notes-bar" hidden aria-label="Nota sesi untuk muat turun">
       <div class="student-notes-head">
-        <strong>Nota sesi</strong>
-        <span id="student-notes-count">0/10</span>
+        <strong>Nota saya</strong>
+        <span id="student-notes-count">0 sesi</span>
       </div>
-      <ul id="student-notes-list" class="student-notes-list"></ul>
+      <p class="student-notes-hint">Disimpan 3 sesi terkini · auto padam selepas itu</p>
+      <div id="student-notes-list" class="student-notes-list"></div>
     </aside>
 
     <div class="pip-teacher pip-student" id="pip-teacher-remote" role="group" aria-label="Kamera guru">
@@ -56,6 +57,6 @@
     </footer>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/student.js?v=10"></script>
+  <script type="module" src="/student.js?v=11"></script>
 </body>
 </html>
