@@ -1,4 +1,4 @@
-import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-15';
+import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-16';
 
 const params = new URLSearchParams(window.location.search);
 const accessToken = (params.get('token') || '').trim();
@@ -100,6 +100,11 @@ const annotationLayer = createAnnotationLayer({
   getPage: () => getEffectivePage(),
   mushafHost: els.mushafHost,
   viewerShell: els.viewerShell,
+  clearHighlights: () => {
+    if (role !== 'teacher') return;
+    teacherPatch({ highlightedVerse: null, highlightedAyahs: [], highlightedWords: [] });
+    applyAyahHighlights();
+  },
 });
 
 init();

@@ -67,7 +67,7 @@ const mushafQs = new URLSearchParams({
   embed: '1',
   viewer: '1',
   name: teacherName,
-  cb: 'classroom-22',
+  cb: 'classroom-23',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -443,24 +443,6 @@ function bindDock() {
   els.dockZoomOut.addEventListener('click', () =>
     patch({ teacherZoom: clampZoom((roomState.teacherZoom || 100) - 10) }),
   );
-
-  document.querySelectorAll('.dock-anno [data-anno], .dock-anno [data-anno-action]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const action = btn.getAttribute('data-anno-action');
-      const tool = btn.getAttribute('data-anno');
-      postToMushaf(
-        action === 'clear'
-          ? { type: 'annotation-clear' }
-          : { type: 'annotation-tool', tool },
-      );
-      document.querySelectorAll('.dock-anno [data-anno]').forEach((b) => {
-        b.classList.toggle('active', Boolean(tool) && b.getAttribute('data-anno') === tool && tool !== 'off');
-      });
-      if (tool === 'off' || action === 'clear') {
-        document.querySelectorAll('.dock-anno [data-anno]').forEach((b) => b.classList.remove('active'));
-      }
-    });
-  });
 
   els.dockGo.addEventListener('click', goDock);
   els.dockSearch.addEventListener('keydown', (e) => {

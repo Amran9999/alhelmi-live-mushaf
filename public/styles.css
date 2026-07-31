@@ -1251,11 +1251,21 @@ body.classroom-fs.classroom-mode-baca .annotation-toolbar {
   color: #fff;
 }
 
-.annotation-tool-clear {
+.annotation-tool-clear,
+.annotation-tool-clear-hl {
   width: auto;
   padding: 0 0.65rem;
   font-size: 0.7rem;
   border-radius: 999px;
+}
+
+.annotation-tool-clear-hl {
+  background: #78450f;
+  color: #fde68a;
+}
+
+.annotation-tool-clear-hl:hover {
+  background: #92400e;
 }
 
 .annotation-tool-off.active {

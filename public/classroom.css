@@ -377,21 +377,6 @@ body {
   background: #2f9e6b;
   color: #04140c;
 }
-.dock-anno {
-  flex: 0 0 auto;
-}
-.dock-anno-red.active {
-  background: #be123c;
-  color: #fff;
-}
-.dock-anno-green.active {
-  background: #15803d;
-  color: #fff;
-}
-.dock-anno .dock-seg-btn[data-anno="eraser"].active {
-  background: #475569;
-  color: #fff;
-}
 .dock-search-wrap {
   position: relative;
   flex: 1 1 auto;

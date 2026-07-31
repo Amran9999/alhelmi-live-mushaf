@@ -15,6 +15,7 @@ export function createAnnotationLayer({
   getPage,
   mushafHost,
   viewerShell,
+  clearHighlights,
 }) {
   /** @type {Map<number, object[]>} */
   const strokesByPage = new Map();
@@ -273,7 +274,8 @@ export function createAnnotationLayer({
         <button type="button" class="annotation-tool annotation-tool-red" data-anno-tool="pen-red" title="Pen merah (kesalahan)" aria-label="Pen merah">●</button>
         <button type="button" class="annotation-tool annotation-tool-green" data-anno-tool="pen-green" title="Pen hijau" aria-label="Pen hijau">●</button>
         <button type="button" class="annotation-tool" data-anno-tool="eraser" title="Pemadam" aria-label="Pemadam">⌫</button>
-        <button type="button" class="annotation-tool annotation-tool-clear" data-anno-action="clear" title="Kosongkan anotasi halaman ini" aria-label="Kosongkan halaman">Kosong</button>
+        <button type="button" class="annotation-tool annotation-tool-clear" data-anno-action="clear" title="Kosongkan lukisan halaman ini" aria-label="Kosongkan lukisan">Kosong</button>
+        <button type="button" class="annotation-tool annotation-tool-clear-hl" data-anno-action="clear-highlight" title="Kosongkan highlight ayat" aria-label="Kosongkan highlight">Highlight</button>
         <button type="button" class="annotation-tool annotation-tool-off" data-anno-tool="off" title="Tamat lukisan / pilih ayat" aria-label="Tamat lukisan">✋</button>
       `;
       const ctx = viewerShell.querySelector('.mushaf-context-bar');
@@ -292,6 +294,10 @@ export function createAnnotationLayer({
       const action = btn.getAttribute('data-anno-action');
       if (action === 'clear') {
         clearPage(pageKey());
+        return;
+      }
+      if (action === 'clear-highlight') {
+        if (typeof clearHighlights === 'function') clearHighlights();
         return;
       }
       const next = btn.getAttribute('data-anno-tool');
@@ -399,6 +405,9 @@ export function createAnnotationLayer({
       }
       if (data.type === 'annotation-clear') {
         clearPage(pageKey());
+      }
+      if (data.type === 'annotation-clear-highlight' && typeof clearHighlights === 'function') {
+        clearHighlights();
       }
     });
   }
