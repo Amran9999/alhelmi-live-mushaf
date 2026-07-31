@@ -141,7 +141,6 @@ async function boot() {
 
 /** Kamera/mic sebenar + WebRTC ke pelajar */
 function initTeacherAv() {
-  const pip = document.getElementById('pip-teacher');
   const localVideo = document.getElementById('pip-local-video');
   const fallback = document.getElementById('pip-fallback');
   const mediaWrap = localVideo?.closest('.pip-media');
@@ -151,30 +150,33 @@ function initTeacherAv() {
   const activeVideo = document.getElementById('active-reader-video');
   const activeCam = activeVideo?.closest('.active-cam');
   const activeAvLabel = document.getElementById('active-av-label');
-
-  if (hostVideoMode && pip) {
-    pip.hidden = true;
-    pip.setAttribute('aria-hidden', 'true');
-  }
+  const pipStudent = document.getElementById('pip-student');
+  const pipStudentVideo = document.getElementById('pip-student-video');
+  const pipStudentMedia = document.getElementById('pip-student-media');
+  const pipStudentFallback = document.getElementById('pip-student-fallback');
+  const pipStudentLabel = document.getElementById('pip-student-label');
+  const pipStudentStatus = document.getElementById('pip-student-status');
 
   const peerBySocket = new Map(); // socketId -> { userId, name, stream, camOn, micOn }
 
-  function syncActiveReaderVideo() {
+  function findActivePeer() {
     const fifo = Array.isArray(roomState?.fifo) ? roomState.fifo : [];
     const activeStudent = fifo.find((s) => s.status === 'active');
     const activeId = roomState?.activeReaderId;
-    let match = null;
     for (const peer of peerBySocket.values()) {
       if (!peer.stream) continue;
-      if (activeId && peer.userId === activeId) {
-        match = peer;
-        break;
-      }
+      if (activeId && peer.userId === activeId) return peer;
       if (activeStudent && (peer.userId === activeStudent.id || peer.name === activeStudent.name)) {
-        match = peer;
-        break;
+        return peer;
       }
     }
+    // Fallback: satu stream pelajar sahaja
+    const streams = [...peerBySocket.values()].filter((p) => p.stream);
+    return streams.length === 1 ? streams[0] : null;
+  }
+
+  function syncActiveReaderVideo() {
+    const match = findActivePeer();
     if (match && activeVideo) {
       if (activeVideo.srcObject !== match.stream) {
         activeVideo.srcObject = match.stream;
@@ -189,14 +191,35 @@ function initTeacherAv() {
       activeCam?.classList.remove('has-video');
       if (activeAvLabel) activeAvLabel.textContent = 'Sedang Baca';
     }
+
+    // PiP terapung pelajar (boleh diseret)
+    if (match?.stream && pipStudent && pipStudentVideo) {
+      pipStudent.hidden = false;
+      if (pipStudentVideo.srcObject !== match.stream) {
+        pipStudentVideo.srcObject = match.stream;
+        pipStudentVideo.play().catch(() => {});
+      }
+      pipStudentMedia?.classList.remove('is-idle');
+      const name = match.name || roomState?.activeReaderName || 'Pelajar';
+      if (pipStudentLabel) pipStudentLabel.textContent = name;
+      if (pipStudentFallback) pipStudentFallback.textContent = initials(name);
+      if (pipStudentStatus) {
+        const cam = match.camOn !== false ? 'Cam On' : 'Cam Off';
+        pipStudentStatus.textContent = `Seret ke mana-mana · ${cam}`;
+      }
+    } else if (pipStudent) {
+      pipStudent.hidden = true;
+      if (pipStudentVideo) pipStudentVideo.srcObject = null;
+      pipStudentMedia?.classList.add('is-idle');
+    }
   }
 
   const av = createClassroomAv({
     socket,
     role: 'teacher',
     userId: 'teacher-local',
-    localVideo: hostVideoMode ? null : localVideo,
-    skipLocalMedia: hostVideoMode,
+    localVideo,
+    skipLocalMedia: false,
     onRemoteStream(socketId, stream) {
       const prev = peerBySocket.get(socketId) || {};
       peerBySocket.set(socketId, { ...prev, stream });
@@ -233,7 +256,6 @@ function initTeacherAv() {
       refreshFifoMediaLabels();
     },
     onStatus(msg) {
-      if (hostVideoMode) return;
       if (statusEl) statusEl.textContent = msg;
       if (mediaWrap && localVideo?.srcObject) {
         mediaWrap.classList.remove('is-idle');
@@ -242,45 +264,43 @@ function initTeacherAv() {
     },
   });
 
-  if (!hostVideoMode) {
-    mediaWrap?.classList.add('is-idle');
-    if (fallback) fallback.textContent = initials(teacherName);
+  mediaWrap?.classList.add('is-idle');
+  if (fallback) fallback.textContent = initials(teacherName);
 
-    function refreshToggleUi() {
-      const st = av.getState();
-      btnMic?.classList.toggle('is-off', !st.wantMic);
-      btnMic?.setAttribute('aria-pressed', st.wantMic ? 'true' : 'false');
-      btnMic && (btnMic.title = st.wantMic ? 'Matikan mikrofon' : 'Hidupkan mikrofon');
-      btnCam?.classList.toggle('is-off', !st.camOn);
-      btnCam?.setAttribute('aria-pressed', st.camOn ? 'true' : 'false');
-      btnCam && (btnCam.title = st.camOn ? 'Matikan kamera' : 'Hidupkan kamera');
-      mediaWrap?.classList.toggle('is-cam-off', !st.camOn);
-      localVideo?.classList.toggle('is-cam-off', !st.camOn);
-    }
-
-    btnMic?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      av.toggleMic();
-      refreshToggleUi();
-    });
-    btnCam?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      av.toggleCam();
-      refreshToggleUi();
-    });
-
-    av.startLocal()
-      .then(() => {
-        mediaWrap?.classList.remove('is-idle');
-        refreshToggleUi();
-      })
-      .catch(() => {
-        mediaWrap?.classList.add('is-idle');
-        if (statusEl && !statusEl.textContent.includes('lihat sahaja')) {
-          statusEl.textContent = 'Mod lihat sahaja — benarkan kamera untuk siaran';
-        }
-      });
+  function refreshToggleUi() {
+    const st = av.getState();
+    btnMic?.classList.toggle('is-off', !st.wantMic);
+    btnMic?.setAttribute('aria-pressed', st.wantMic ? 'true' : 'false');
+    btnMic && (btnMic.title = st.wantMic ? 'Matikan mikrofon' : 'Hidupkan mikrofon');
+    btnCam?.classList.toggle('is-off', !st.camOn);
+    btnCam?.setAttribute('aria-pressed', st.camOn ? 'true' : 'false');
+    btnCam && (btnCam.title = st.camOn ? 'Matikan kamera' : 'Hidupkan kamera');
+    mediaWrap?.classList.toggle('is-cam-off', !st.camOn);
+    localVideo?.classList.toggle('is-cam-off', !st.camOn);
   }
+
+  btnMic?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    av.toggleMic();
+    refreshToggleUi();
+  });
+  btnCam?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    av.toggleCam();
+    refreshToggleUi();
+  });
+
+  av.startLocal()
+    .then(() => {
+      mediaWrap?.classList.remove('is-idle');
+      refreshToggleUi();
+    })
+    .catch(() => {
+      mediaWrap?.classList.add('is-idle');
+      if (statusEl && !statusEl.textContent.includes('lihat sahaja')) {
+        statusEl.textContent = 'Seret PiP · benarkan kamera untuk siaran';
+      }
+    });
 
   // Simpan peer meta dari roster/join
   socket.on('av-roster', (peers) => {
@@ -650,21 +670,29 @@ function initials(name) {
     .toUpperCase();
 }
 
-/** PiP guru: seret ke mana-mana pada skrin penuh (fixed ke viewport). */
-function initDraggablePip() {
-  const pip = document.getElementById('pip-teacher');
-  const btnShrink = document.getElementById('pip-shrink');
-  const btnGrow = document.getElementById('pip-grow');
-  const btnLarge = document.getElementById('pip-large');
-  const resizeHandle = document.getElementById('pip-resize');
+/** PiP terapung: seret ke mana-mana pada skrin penuh (fixed ke viewport). */
+function initDraggablePip({
+  pipId = 'pip-teacher',
+  shrinkId = 'pip-shrink',
+  growId = 'pip-grow',
+  largeId = 'pip-large',
+  resizeId = 'pip-resize',
+  storageSuffix = 'teacher',
+  defaultWidth = 148,
+} = {}) {
+  const pip = document.getElementById(pipId);
+  const btnShrink = document.getElementById(shrinkId);
+  const btnGrow = document.getElementById(growId);
+  const btnLarge = document.getElementById(largeId);
+  const resizeHandle = document.getElementById(resizeId);
   if (!pip) return;
 
-  const storageKey = `alquran-pip-screen:${roomId}`;
+  const storageKey = `alquran-pip-screen:${roomId}:${storageSuffix}`;
   const MIN_W = 120;
   const STEP = 36;
   const MARGIN = 8;
-  let width = 148;
-  let beforeLarge = 148;
+  let width = defaultWidth;
+  let beforeLarge = defaultWidth;
   let isLarge = false;
 
   function viewport() {
@@ -867,7 +895,23 @@ function initDraggablePip() {
   resizeHandle?.addEventListener('pointercancel', endResize);
 }
 
-if (!hostVideoMode) initDraggablePip();
+initDraggablePip({
+  pipId: 'pip-teacher',
+  shrinkId: 'pip-shrink',
+  growId: 'pip-grow',
+  largeId: 'pip-large',
+  resizeId: 'pip-resize',
+  storageSuffix: 'teacher',
+});
+initDraggablePip({
+  pipId: 'pip-student',
+  shrinkId: 'pip-student-shrink',
+  growId: 'pip-student-grow',
+  largeId: 'pip-student-large',
+  resizeId: 'pip-student-resize',
+  storageSuffix: 'student',
+  defaultWidth: 168,
+});
 
 boot().catch((err) => {
   console.error(err);

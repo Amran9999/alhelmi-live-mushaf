@@ -464,6 +464,13 @@ body {
   display: none !important;
 }
 
+.pip-teacher.pip-student-float {
+  right: auto;
+  left: 1rem;
+  bottom: 4.5rem;
+  z-index: 40;
+}
+
 .pip-teacher {
   --pip-w: 148px;
   position: fixed;

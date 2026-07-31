@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Fraunces:opsz,wght@9..144,560;9..144,650&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/classroom.css?v=25" />
+  <link rel="stylesheet" href="/classroom.css?v=26" />
 </head>
 <body class="role-teacher">
   <div class="room-shell">
@@ -130,7 +130,7 @@
       </footer>
     </section>
 
-    <!-- PiP terapung seluruh skrin (bukan terhad ke mushaf) -->
+    <!-- PiP terapung — boleh diseret ke mana-mana pada skrin -->
     <div class="pip-teacher" id="pip-teacher" title="Seret ke mana-mana pada skrin" role="group" aria-label="Kamera guru — boleh diseret ke mana-mana pada skrin">
       <div class="pip-chrome">
         <span class="pip-label">Guru</span>
@@ -149,9 +149,26 @@
       <span class="pip-hint" id="pip-av-status">Seret ke mana-mana pada skrin</span>
       <span class="pip-resize" id="pip-resize" title="Seret untuk ubah saiz" aria-hidden="true"></span>
     </div>
+
+    <div class="pip-teacher pip-student-float" id="pip-student" hidden title="Seret ke mana-mana pada skrin" role="group" aria-label="Kamera pelajar — boleh diseret">
+      <div class="pip-chrome">
+        <span class="pip-label" id="pip-student-label">Pelajar</span>
+        <div class="pip-actions">
+          <button type="button" class="pip-btn" id="pip-student-shrink" title="Kecilkan" aria-label="Kecilkan">−</button>
+          <button type="button" class="pip-btn" id="pip-student-grow" title="Besarkan" aria-label="Besarkan">+</button>
+          <button type="button" class="pip-btn" id="pip-student-large" title="Saiz besar" aria-label="Saiz besar">▣</button>
+        </div>
+      </div>
+      <div class="pip-media is-idle" id="pip-student-media">
+        <video id="pip-student-video" class="pip-video" playsinline autoplay></video>
+        <div class="pip-fallback" id="pip-student-fallback">P</div>
+      </div>
+      <span class="pip-hint" id="pip-student-status">Menunggu kamera pelajar…</span>
+      <span class="pip-resize" id="pip-student-resize" title="Seret untuk ubah saiz" aria-hidden="true"></span>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/classroom.js?v=25"></script>
+  <script type="module" src="/classroom.js?v=26"></script>
 </body>
 </html>
