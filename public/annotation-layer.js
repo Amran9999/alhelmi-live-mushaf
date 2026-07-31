@@ -293,7 +293,7 @@ export function createAnnotationLayer({
         <button type="button" class="annotation-tool" data-anno-tool="eraser" title="Pemadam" aria-label="Pemadam">⌫</button>
         <button type="button" class="annotation-tool annotation-tool-clear" data-anno-action="clear" title="Kosongkan lukisan halaman ini" aria-label="Kosongkan lukisan">Kosong</button>
         <button type="button" class="annotation-tool annotation-tool-clear-hl" data-anno-action="clear-highlight" title="Kosongkan highlight ayat" aria-label="Kosongkan highlight">Highlight</button>
-        <button type="button" class="annotation-tool annotation-tool-send" data-anno-action="send-note" title="Screenshot mushaf + nota, hantar kepada pelajar" aria-label="Hantar nota">Hantar</button>
+        <button type="button" class="annotation-tool annotation-tool-send" data-anno-action="send-note" title="Ambil screenshot mushaf + nota, hantar kepada pelajar" aria-label="Screenshot dan hantar nota">📷 Skrin</button>
         <button type="button" class="annotation-tool annotation-tool-off" data-anno-tool="off" title="Tamat lukisan / pilih ayat" aria-label="Tamat lukisan">✋</button>
       `;
       const ctx = viewerShell.querySelector('.mushaf-context-bar');
@@ -452,7 +452,7 @@ export function createAnnotationLayer({
       sharing = false;
       if (btn) {
         btn.disabled = false;
-        btn.textContent = label || 'Hantar';
+        btn.textContent = label || '📷 Skrin';
       }
     }
   }
@@ -560,6 +560,10 @@ export function createAnnotationLayer({
       if (data.type === 'annotation-clear-highlight' && typeof clearHighlights === 'function') {
         clearHighlights();
       }
+      if (data.type === 'annotation-send-note') {
+        const btn = toolbar?.querySelector('[data-anno-action="send-note"]');
+        sendMushafNote(btn || null);
+      }
     });
   }
 
@@ -568,6 +572,7 @@ export function createAnnotationLayer({
     onPageRendered,
     onRoomPageChanged,
     setTool,
+    sendMushafNote,
     clearPage,
     refresh: () => {
       ensureToolbar();

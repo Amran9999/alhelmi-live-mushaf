@@ -25,7 +25,7 @@ const mushafQs = new URLSearchParams({
   viewer: '1',
   userId,
   name,
-  cb: 'classroom-24',
+  cb: 'classroom-25',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');

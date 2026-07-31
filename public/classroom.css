@@ -328,6 +328,10 @@ body {
 }
 .share-stage-seg { align-self: flex-start; }
 .share-upload-btn { cursor: pointer; text-align: center; }
+#btn-screenshot-note {
+  margin-top: 0.35rem;
+  font-weight: 700;
+}
 .share-file-meta {
   margin: 0;
   font-size: 0.72rem;

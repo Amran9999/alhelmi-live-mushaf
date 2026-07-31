@@ -49,6 +49,7 @@ const els = {
   sharePhotoMeta: document.getElementById('share-photo-meta'),
   shareStatus: document.getElementById('share-status'),
   btnClearPhoto: document.getElementById('btn-clear-photo'),
+  btnScreenshotNote: document.getElementById('btn-screenshot-note'),
 };
 
 els.classTitle.textContent = roomId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -67,7 +68,7 @@ const mushafQs = new URLSearchParams({
   embed: '1',
   viewer: '1',
   name: teacherName,
-  cb: 'classroom-24',
+  cb: 'classroom-25',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -520,6 +521,11 @@ els.btnStagePhoto?.addEventListener('click', () => {
   patch({ stageView: 'photo' });
 });
 els.btnClearPhoto?.addEventListener('click', () => socket.emit('clear_photo'));
+
+els.btnScreenshotNote?.addEventListener('click', () => {
+  if (els.sharePhotoMeta) els.sharePhotoMeta.textContent = 'Mengambil screenshot nota…';
+  postToMushaf({ type: 'annotation-send-note' });
+});
 
 els.sharePhotoInput?.addEventListener('change', async () => {
   const file = els.sharePhotoInput.files?.[0];
