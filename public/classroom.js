@@ -59,6 +59,10 @@ let navData = null;
 let surahCatalog = [];
 let navMode = 'surah'; // surah | juz | page
 let selectedPage = 1;
+/** userId → { camOn, micOn, name } — dikemas dari WebRTC */
+const peerMediaByUserId = new Map();
+/** name → { camOn, micOn, userId } — fallback bila FIFO id ≠ socket userId */
+const peerMediaByName = new Map();
 
 const socketReady = new Promise((resolve) => {
   socket.on('connect', () => {
@@ -125,10 +129,17 @@ function initTeacherAv() {
   const peerBySocket = new Map(); // socketId -> { userId, name, stream, camOn, micOn }
 
   function syncActiveReaderVideo() {
+    const fifo = Array.isArray(roomState?.fifo) ? roomState.fifo : [];
+    const activeStudent = fifo.find((s) => s.status === 'active');
     const activeId = roomState?.activeReaderId;
     let match = null;
     for (const peer of peerBySocket.values()) {
-      if (activeId && peer.userId === activeId && peer.stream) {
+      if (!peer.stream) continue;
+      if (activeId && peer.userId === activeId) {
+        match = peer;
+        break;
+      }
+      if (activeStudent && (peer.userId === activeStudent.id || peer.name === activeStudent.name)) {
         match = peer;
         break;
       }
@@ -165,17 +176,29 @@ function initTeacherAv() {
     },
     onMediaState(state) {
       const prev = peerBySocket.get(state.socketId) || {};
-      peerBySocket.set(state.socketId, {
+      const merged = {
         ...prev,
         userId: state.userId,
         camOn: state.camOn,
         micOn: state.micOn,
-      });
-      syncActiveReaderVideo();
-      // Kemas kini meta FIFO bila ada
-      for (const li of els.fifoList.querySelectorAll('.fifo-item')) {
-        /* labels dikemas pada render semula */
+      };
+      peerBySocket.set(state.socketId, merged);
+      if (state.userId) {
+        peerMediaByUserId.set(state.userId, {
+          camOn: state.camOn,
+          micOn: state.micOn,
+          name: merged.name,
+        });
       }
+      if (merged.name) {
+        peerMediaByName.set(merged.name, {
+          camOn: state.camOn,
+          micOn: state.micOn,
+          userId: state.userId,
+        });
+      }
+      syncActiveReaderVideo();
+      refreshFifoMediaLabels();
     },
     onStatus(msg) {
       if (statusEl) statusEl.textContent = msg;
@@ -240,7 +263,9 @@ function initTeacherAv() {
     })
     .catch(() => {
       mediaWrap?.classList.add('is-idle');
-      if (statusEl) statusEl.textContent = 'Benarkan kamera/mic dalam browser';
+      if (statusEl && !statusEl.textContent.includes('lihat sahaja')) {
+        statusEl.textContent = 'Mod lihat sahaja — benarkan kamera untuk siaran';
+      }
     });
 
   window.addEventListener('beforeunload', () => av.closeAll());
@@ -422,9 +447,36 @@ els.btnMuteAll.addEventListener('click', () => {
 });
 els.btnResetFifo.addEventListener('click', () => socket.emit('fifo_action', { type: 'reset' }));
 
+function mediaMetaForStudent(student) {
+  const st = peerMediaByUserId.get(student.id) || peerMediaByName.get(student.name);
+  if (!st) return 'Belum bersambung';
+  const cam = st.camOn !== false ? 'Cam On' : 'Cam Off';
+  const mic = st.micOn ? 'Mic On' : 'Mic Off';
+  return `${mic} · ${cam}`;
+}
+
+function refreshFifoMediaLabels() {
+  for (const li of els.fifoList.querySelectorAll('.fifo-item')) {
+    const meta = li.querySelector('.fifo-item-meta');
+    const studentId = li.dataset.studentId;
+    const studentName = li.dataset.studentName;
+    if (!meta) continue;
+    const st =
+      (studentId && peerMediaByUserId.get(studentId)) ||
+      (studentName && peerMediaByName.get(studentName));
+    if (st) {
+      const cam = st.camOn !== false ? 'Cam On' : 'Cam Off';
+      const mic = st.micOn ? 'Mic On' : 'Mic Off';
+      meta.textContent = `${mic} · ${cam}`;
+    }
+  }
+}
+
 function renderFifoItem(student) {
   const li = document.createElement('li');
   li.className = 'fifo-item';
+  li.dataset.studentId = student.id;
+  li.dataset.studentName = student.name;
   if (student.round > 1) li.classList.add('is-review');
   if (student.status === 'done') li.classList.add('is-done');
 
@@ -445,7 +497,7 @@ function renderFifoItem(student) {
 
   const meta = document.createElement('div');
   meta.className = 'fifo-item-meta';
-  meta.textContent = 'Mic Off · Cam Off';
+  meta.textContent = mediaMetaForStudent(student);
 
   const actions = document.createElement('div');
   actions.className = 'btn-row';

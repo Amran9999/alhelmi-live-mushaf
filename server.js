@@ -448,6 +448,18 @@ io.on('connection', (socket) => {
     socket.emit('av-roster', peers);
     socket.to(currentRoom).emit('av-peer-joined', peerInfo(socket));
 
+    if (role === 'student') {
+      const state = getRoom(currentRoom);
+      const fifo = (state.fifo || []).map((s) => ({ ...s }));
+      const known =
+        fifo.some((s) => s.id === auth.userId) ||
+        fifo.some((s) => s.name === auth.name && s.status !== 'done');
+      if (!known) {
+        fifo.push({ id: auth.userId, name: auth.name, status: 'waiting', round: 1 });
+        publishRoom(currentRoom, { ...state, fifo, updatedAt: Date.now() });
+      }
+    }
+
     if (role === 'teacher') {
       socket.to(currentRoom).emit('teacher_online', true);
     }

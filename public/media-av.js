@@ -117,12 +117,18 @@ export function createClassroomAv({
   async function ensurePc(remoteSocketId, peerMeta = {}) {
     if (pcs.has(remoteSocketId)) return pcs.get(remoteSocketId);
 
-    await startLocal();
+    await startLocal().catch(() => null);
     const pc = new RTCPeerConnection(ICE);
     pcs.set(remoteSocketId, pc);
 
-    for (const track of localStream.getTracks()) {
-      pc.addTrack(track, localStream);
+    if (localStream) {
+      for (const track of localStream.getTracks()) {
+        pc.addTrack(track, localStream);
+      }
+    } else if (role === 'teacher') {
+      // Guru boleh lihat pelajar walaupun kamera/mic ditolak browser
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
     }
 
     pc.onicecandidate = (ev) => {
@@ -213,19 +219,18 @@ export function createClassroomAv({
 
   /** Guru initiate ke semua pelajar; pelajar hanya jawab offer. */
   async function onRoster(peers = []) {
+    if (role !== 'teacher') return;
     await startLocal().catch(() => null);
-    if (!localStream || role !== 'teacher') return;
+    if (!localStream) status('Mod lihat sahaja — benarkan kamera untuk siaran');
     for (const p of peers) {
       if (p.role === 'student') callPeer(p.socketId, p).catch(console.error);
     }
   }
 
   async function onPeerJoined(peer) {
+    if (role !== 'teacher' || peer.role !== 'student') return;
     await startLocal().catch(() => null);
-    if (!localStream) return;
-    if (role === 'teacher' && peer.role === 'student') {
-      callPeer(peer.socketId, peer).catch(console.error);
-    }
+    callPeer(peer.socketId, peer).catch(console.error);
   }
 
   socket.on('av-roster', onRoster);
