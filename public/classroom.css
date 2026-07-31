@@ -800,6 +800,20 @@ body {
   display: flex;
   flex-direction: column;
 }
+.preview-banner {
+  flex: 0 0 auto;
+  z-index: 9;
+  padding: 0.45rem 0.75rem;
+  background: #7c2d12;
+  color: #ffedd5;
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+body.is-teacher-preview .pip-student {
+  opacity: 0.92;
+}
 .student-view #mushaf-frame { flex: 1; min-height: 0; }
 .student-view #mushaf-frame.is-hidden-stage { display: none; }
 .student-view .shared-photo-stage {

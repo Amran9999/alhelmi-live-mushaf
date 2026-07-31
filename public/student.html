@@ -7,10 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/classroom.css?v=33" />
+  <link rel="stylesheet" href="/classroom.css?v=34" />
 </head>
 <body class="role-student student-shell">
   <div class="student-view">
+    <div id="preview-banner" class="preview-banner" hidden>
+      Pratonton paparan pelajar — anda buka sebagai guru. “Kamera anda” = kamera tab ini, bukan pelajar sebenar.
+    </div>
     <iframe id="mushaf-frame" title="Mushaf pelajar" src="about:blank" allow=""></iframe>
     <div id="shared-photo-stage" class="shared-photo-stage" hidden>
       <img id="shared-photo-img" alt="Foto dikongsi guru" />
@@ -28,7 +31,7 @@
 
     <div class="pip-teacher pip-student" id="pip-teacher-remote" role="group" aria-label="Kamera guru">
       <div class="pip-chrome">
-        <span class="pip-label">Guru</span>
+        <span class="pip-label" id="label-teacher">Guru</span>
       </div>
       <div class="pip-media is-idle" id="teacher-media">
         <video id="teacher-video" class="pip-video" playsinline autoplay></video>
@@ -39,7 +42,7 @@
 
     <div class="pip-self" id="pip-self" role="group" aria-label="Kamera anda">
       <div class="pip-chrome">
-        <span class="pip-label">Anda</span>
+        <span class="pip-label" id="label-self">Anda</span>
         <div class="pip-actions">
           <button type="button" class="pip-btn" id="self-mic" title="Mikrofon" aria-pressed="true">🎤</button>
           <button type="button" class="pip-btn" id="self-cam" title="Kamera" aria-pressed="true">📷</button>
@@ -57,6 +60,6 @@
     </footer>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/student.js?v=12"></script>
+  <script type="module" src="/student.js?v=13"></script>
 </body>
 </html>

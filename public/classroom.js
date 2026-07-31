@@ -58,10 +58,14 @@ els.classTitle.textContent = roomId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c
 els.teacherName.textContent = teacherName;
 els.roomLabel.textContent = `Bilik: ${roomId}`;
 
-const studentQs = new URLSearchParams({ room: roomId });
+const studentQs = new URLSearchParams({
+  room: roomId,
+  preview: '1', // guru buka pratonton — bukan akaun pelajar sebenar
+});
 if (accessToken) studentQs.set('token', accessToken);
 else studentQs.set('local', '1');
 els.studentLink.href = `/student?${studentQs.toString()}`;
+els.studentLink.title = 'Pratonton paparan pelajar (anda kekal sebagai guru di tab ini)';
 
 /* viewer=1 → mushaf tanpa toolbar dalam iframe */
 const mushafQs = new URLSearchParams({
@@ -70,7 +74,7 @@ const mushafQs = new URLSearchParams({
   embed: '1',
   viewer: '1',
   name: teacherName,
-  cb: 'classroom-28',
+  cb: 'classroom-29',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');

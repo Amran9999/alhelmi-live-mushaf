@@ -5,6 +5,7 @@ const roomId = (params.get('room') || 'kelas-a').trim();
 const userId = (params.get('userId') || `student-${Math.random().toString(36).slice(2, 8)}`).trim();
 const name = (params.get('name') || 'Pelajar').trim();
 const accessToken = (params.get('token') || '').trim();
+const previewMode = params.get('preview') === '1';
 
 const frame = document.getElementById('mushaf-frame');
 const statusEl = document.getElementById('student-status');
@@ -23,9 +24,15 @@ const stagePhotoStrip = document.getElementById('stage-photo-strip');
 const studentNotesBar = document.getElementById('student-notes-bar');
 const studentNotesList = document.getElementById('student-notes-list');
 const studentNotesCount = document.getElementById('student-notes-count');
+const previewBanner = document.getElementById('preview-banner');
+const labelSelf = document.getElementById('label-self');
+const labelTeacher = document.getElementById('label-teacher');
+const pipTeacherRemote = document.getElementById('pip-teacher-remote');
 let archivedNotes = { sessions: [] };
 /** Paparan lokal arkib (walaupun guru masih di Mushaf). */
 let localPreviewUrl = null;
+let joinedRole = 'student';
+let joinedName = name;
 
 const mushafQs = new URLSearchParams({
   room: roomId,
@@ -36,18 +43,46 @@ const mushafQs = new URLSearchParams({
   annotate: '0',
   userId,
   name,
-  cb: 'classroom-28',
+  cb: 'classroom-29',
 });
+if (previewMode) mushafQs.set('preview', '1');
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
 frame.src = `/mushaf?${mushafQs.toString()}`;
 
-selfFallback.textContent = name
-  .split(/\s+/)
-  .map((p) => p[0])
-  .join('')
-  .slice(0, 2)
-  .toUpperCase() || 'P';
+function applyViewerLabels() {
+  const isTeacherPreview = previewMode || joinedRole === 'teacher';
+  document.body.classList.toggle('is-teacher-preview', isTeacherPreview);
+  if (previewBanner) previewBanner.hidden = !isTeacherPreview;
+  if (labelSelf) {
+    labelSelf.textContent = isTeacherPreview ? 'Kamera anda' : 'Anda';
+  }
+  if (labelTeacher) {
+    labelTeacher.textContent = isTeacherPreview ? 'Slot guru' : 'Guru';
+  }
+  if (teacherHint && isTeacherPreview) {
+    teacherHint.textContent = 'Pratonton — slot guru kosong di tab ini';
+  }
+  if (selfStatus && isTeacherPreview && selfStatus.textContent === 'Menyambung…') {
+    selfStatus.textContent = 'Pratonton · kamera tab ini (bukan pelajar)';
+  }
+  if (pipTeacherRemote) {
+    pipTeacherRemote.title = isTeacherPreview
+      ? 'Dalam pratonton guru, slot ini tidak menunjukkan diri anda'
+      : 'Kamera guru';
+  }
+  if (selfFallback) {
+    const label = isTeacherPreview ? joinedName || 'Guru' : joinedName || name;
+    selfFallback.textContent = label
+      .split(/\s+/)
+      .map((p) => p[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || (isTeacherPreview ? 'G' : 'P');
+  }
+}
+
+applyViewerLabels();
 
 const socket = io({ autoConnect: false });
 let roomState = {};
@@ -279,22 +314,31 @@ socket.on('av-mute-policy', (policy) => {
   refreshToggleUi();
 });
 
+socket.on('joined', (payload = {}) => {
+  joinedRole = payload.role === 'teacher' ? 'teacher' : 'student';
+  joinedName = payload.name || name;
+  applyViewerLabels();
+});
+
 socket.connect();
 socket.emit('join', {
   token: accessToken || undefined,
   roomId: accessToken ? undefined : roomId,
-  role: 'student',
-  userId,
-  name,
+  role: previewMode ? undefined : 'student',
+  userId: previewMode ? undefined : userId,
+  name: previewMode ? undefined : name,
 });
 
 av.startLocal()
   .then(() => {
     selfMedia.classList.remove('is-idle');
     refreshToggleUi();
+    applyViewerLabels();
   })
   .catch(() => {
-    selfStatus.textContent = 'Benarkan kamera/mic dalam browser';
+    selfStatus.textContent = previewMode
+      ? 'Pratonton · benarkan kamera untuk uji paparan'
+      : 'Benarkan kamera/mic dalam browser';
   });
 
 window.addEventListener('beforeunload', () => av.closeAll());
