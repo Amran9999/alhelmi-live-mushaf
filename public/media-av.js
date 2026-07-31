@@ -15,6 +15,8 @@ export function createClassroomAv({
   onRemoteGone,
   onMediaState,
   onStatus,
+  /** Portal (app.alhelmi.com) kendalikan video — jangan minta getUserMedia di sini */
+  skipLocalMedia = false,
 }) {
   let localStream = null;
   let camOn = true;
@@ -117,7 +119,7 @@ export function createClassroomAv({
   async function ensurePc(remoteSocketId, peerMeta = {}) {
     if (pcs.has(remoteSocketId)) return pcs.get(remoteSocketId);
 
-    await startLocal().catch(() => null);
+    if (!skipLocalMedia) await startLocal().catch(() => null);
     const pc = new RTCPeerConnection(ICE);
     pcs.set(remoteSocketId, pc);
 
@@ -127,6 +129,7 @@ export function createClassroomAv({
       }
     } else if (role === 'teacher') {
       // Guru boleh lihat pelajar walaupun kamera/mic ditolak browser
+      // atau bila video dikendalikan portal (skipLocalMedia)
       pc.addTransceiver('video', { direction: 'recvonly' });
       pc.addTransceiver('audio', { direction: 'recvonly' });
     }
@@ -220,8 +223,10 @@ export function createClassroomAv({
   /** Guru initiate ke semua pelajar; pelajar hanya jawab offer. */
   async function onRoster(peers = []) {
     if (role !== 'teacher') return;
-    await startLocal().catch(() => null);
-    if (!localStream) status('Mod lihat sahaja — benarkan kamera untuk siaran');
+    if (!skipLocalMedia) {
+      await startLocal().catch(() => null);
+      if (!localStream) status('Mod lihat sahaja — benarkan kamera untuk siaran');
+    }
     for (const p of peers) {
       if (p.role === 'student') callPeer(p.socketId, p).catch(console.error);
     }
@@ -229,7 +234,7 @@ export function createClassroomAv({
 
   async function onPeerJoined(peer) {
     if (role !== 'teacher' || peer.role !== 'student') return;
-    await startLocal().catch(() => null);
+    if (!skipLocalMedia) await startLocal().catch(() => null);
     callPeer(peer.socketId, peer).catch(console.error);
   }
 

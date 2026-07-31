@@ -460,6 +460,10 @@ body {
 .dock-icon:hover { background: rgba(255,255,255,0.08); }
 
 /* PiP guru: terapung seluruh skrin (fixed), seret ke mana-mana */
+.pip-teacher[hidden] {
+  display: none !important;
+}
+
 .pip-teacher {
   --pip-w: 148px;
   position: fixed;

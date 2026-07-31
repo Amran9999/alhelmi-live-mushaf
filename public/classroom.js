@@ -6,6 +6,21 @@ const teacherName = (params.get('name') || 'Ustaz Farid').trim();
 const accessToken = (params.get('token') || '').trim();
 const localDev = params.get('local') === '1' || params.get('dev') === '1' || !accessToken;
 
+/** Video UI dikendalikan portal (app.alhelmi.com) — sembunyikan PiP mushaf lama. */
+function isHostVideoMode() {
+  if (params.get('pip') === '0' || params.get('hostAv') === '1' || params.get('av') === 'host') {
+    return true;
+  }
+  const host = location.hostname;
+  if (host === 'app.alhelmi.com' || host === 'learn.alhelmi.com') return true;
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+const hostVideoMode = isHostVideoMode();
+
 const els = {
   classTitle: document.getElementById('class-title'),
   teacherName: document.getElementById('teacher-name'),
@@ -126,6 +141,7 @@ async function boot() {
 
 /** Kamera/mic sebenar + WebRTC ke pelajar */
 function initTeacherAv() {
+  const pip = document.getElementById('pip-teacher');
   const localVideo = document.getElementById('pip-local-video');
   const fallback = document.getElementById('pip-fallback');
   const mediaWrap = localVideo?.closest('.pip-media');
@@ -135,6 +151,11 @@ function initTeacherAv() {
   const activeVideo = document.getElementById('active-reader-video');
   const activeCam = activeVideo?.closest('.active-cam');
   const activeAvLabel = document.getElementById('active-av-label');
+
+  if (hostVideoMode && pip) {
+    pip.hidden = true;
+    pip.setAttribute('aria-hidden', 'true');
+  }
 
   const peerBySocket = new Map(); // socketId -> { userId, name, stream, camOn, micOn }
 
@@ -174,7 +195,8 @@ function initTeacherAv() {
     socket,
     role: 'teacher',
     userId: 'teacher-local',
-    localVideo,
+    localVideo: hostVideoMode ? null : localVideo,
+    skipLocalMedia: hostVideoMode,
     onRemoteStream(socketId, stream) {
       const prev = peerBySocket.get(socketId) || {};
       peerBySocket.set(socketId, { ...prev, stream });
@@ -211,6 +233,7 @@ function initTeacherAv() {
       refreshFifoMediaLabels();
     },
     onStatus(msg) {
+      if (hostVideoMode) return;
       if (statusEl) statusEl.textContent = msg;
       if (mediaWrap && localVideo?.srcObject) {
         mediaWrap.classList.remove('is-idle');
@@ -219,31 +242,45 @@ function initTeacherAv() {
     },
   });
 
-  mediaWrap?.classList.add('is-idle');
-  if (fallback) fallback.textContent = initials(teacherName);
+  if (!hostVideoMode) {
+    mediaWrap?.classList.add('is-idle');
+    if (fallback) fallback.textContent = initials(teacherName);
 
-  function refreshToggleUi() {
-    const st = av.getState();
-    btnMic?.classList.toggle('is-off', !st.wantMic);
-    btnMic?.setAttribute('aria-pressed', st.wantMic ? 'true' : 'false');
-    btnMic && (btnMic.title = st.wantMic ? 'Matikan mikrofon' : 'Hidupkan mikrofon');
-    btnCam?.classList.toggle('is-off', !st.camOn);
-    btnCam?.setAttribute('aria-pressed', st.camOn ? 'true' : 'false');
-    btnCam && (btnCam.title = st.camOn ? 'Matikan kamera' : 'Hidupkan kamera');
-    mediaWrap?.classList.toggle('is-cam-off', !st.camOn);
-    localVideo?.classList.toggle('is-cam-off', !st.camOn);
+    function refreshToggleUi() {
+      const st = av.getState();
+      btnMic?.classList.toggle('is-off', !st.wantMic);
+      btnMic?.setAttribute('aria-pressed', st.wantMic ? 'true' : 'false');
+      btnMic && (btnMic.title = st.wantMic ? 'Matikan mikrofon' : 'Hidupkan mikrofon');
+      btnCam?.classList.toggle('is-off', !st.camOn);
+      btnCam?.setAttribute('aria-pressed', st.camOn ? 'true' : 'false');
+      btnCam && (btnCam.title = st.camOn ? 'Matikan kamera' : 'Hidupkan kamera');
+      mediaWrap?.classList.toggle('is-cam-off', !st.camOn);
+      localVideo?.classList.toggle('is-cam-off', !st.camOn);
+    }
+
+    btnMic?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      av.toggleMic();
+      refreshToggleUi();
+    });
+    btnCam?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      av.toggleCam();
+      refreshToggleUi();
+    });
+
+    av.startLocal()
+      .then(() => {
+        mediaWrap?.classList.remove('is-idle');
+        refreshToggleUi();
+      })
+      .catch(() => {
+        mediaWrap?.classList.add('is-idle');
+        if (statusEl && !statusEl.textContent.includes('lihat sahaja')) {
+          statusEl.textContent = 'Mod lihat sahaja — benarkan kamera untuk siaran';
+        }
+      });
   }
-
-  btnMic?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    av.toggleMic();
-    refreshToggleUi();
-  });
-  btnCam?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    av.toggleCam();
-    refreshToggleUi();
-  });
 
   // Simpan peer meta dari roster/join
   socket.on('av-roster', (peers) => {
@@ -265,18 +302,6 @@ function initTeacherAv() {
   socket.on('state', () => {
     queueMicrotask(syncActiveReaderVideo);
   });
-
-  av.startLocal()
-    .then(() => {
-      mediaWrap?.classList.remove('is-idle');
-      refreshToggleUi();
-    })
-    .catch(() => {
-      mediaWrap?.classList.add('is-idle');
-      if (statusEl && !statusEl.textContent.includes('lihat sahaja')) {
-        statusEl.textContent = 'Mod lihat sahaja — benarkan kamera untuk siaran';
-      }
-    });
 
   window.addEventListener('beforeunload', () => av.closeAll());
 }
@@ -842,7 +867,7 @@ function initDraggablePip() {
   resizeHandle?.addEventListener('pointercancel', endResize);
 }
 
-initDraggablePip();
+if (!hostVideoMode) initDraggablePip();
 
 boot().catch((err) => {
   console.error(err);
