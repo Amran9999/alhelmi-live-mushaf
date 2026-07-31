@@ -67,7 +67,7 @@ const mushafQs = new URLSearchParams({
   embed: '1',
   viewer: '1',
   name: teacherName,
-  cb: 'classroom-23',
+  cb: 'classroom-24',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -556,6 +556,16 @@ els.sharePhotoInput?.addEventListener('change', async () => {
 socket.on('share_photo_error', (payload) => {
   if (els.sharePhotoMeta) {
     els.sharePhotoMeta.textContent = payload?.error || 'Gagal kongsi foto';
+  }
+});
+
+/* Status screenshot/nota dari iframe mushaf */
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin) return;
+  const data = event.data;
+  if (!data || data.source !== 'alhelmi-mushaf' || data.type !== 'share-status') return;
+  if (els.sharePhotoMeta) {
+    els.sharePhotoMeta.textContent = data.message || (data.error ? 'Gagal hantar nota' : '…');
   }
 });
 

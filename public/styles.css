@@ -1268,6 +1268,24 @@ body.classroom-fs.classroom-mode-baca .annotation-toolbar {
   background: #92400e;
 }
 
+.annotation-tool-send {
+  width: auto;
+  padding: 0 0.75rem;
+  font-size: 0.7rem;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #ecfdf5;
+}
+
+.annotation-tool-send:hover {
+  background: #0d9488;
+}
+
+.annotation-tool-send:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .annotation-tool-off.active {
   background: #475569;
 }

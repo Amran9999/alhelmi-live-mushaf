@@ -8,6 +8,22 @@ const PEN_GREEN = '#16a34a';
 const DEFAULT_PEN_WIDTH = 0.0075;
 const ERASER_WIDTH = 0.028;
 const MIN_POINT_DIST = 0.002;
+const SHARE_MAX_BYTES = 5.5 * 1024 * 1024;
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Gagal muat imej mushaf'));
+    img.src = src;
+  });
+}
+
+function estimateDataUrlBytes(dataUrl) {
+  const i = dataUrl.indexOf(',');
+  const b64 = i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+  return Math.floor((b64.length * 3) / 4);
+}
 
 export function createAnnotationLayer({
   socket,
@@ -27,6 +43,7 @@ export function createAnnotationLayer({
   let resizeObserver = null;
   let bound = false;
   let toolbar = null;
+  let sharing = false;
 
   function pageKey(page = getPage()) {
     return Math.min(604, Math.max(1, Number(page) || 1));
@@ -276,6 +293,7 @@ export function createAnnotationLayer({
         <button type="button" class="annotation-tool" data-anno-tool="eraser" title="Pemadam" aria-label="Pemadam">⌫</button>
         <button type="button" class="annotation-tool annotation-tool-clear" data-anno-action="clear" title="Kosongkan lukisan halaman ini" aria-label="Kosongkan lukisan">Kosong</button>
         <button type="button" class="annotation-tool annotation-tool-clear-hl" data-anno-action="clear-highlight" title="Kosongkan highlight ayat" aria-label="Kosongkan highlight">Highlight</button>
+        <button type="button" class="annotation-tool annotation-tool-send" data-anno-action="send-note" title="Screenshot mushaf + nota, hantar kepada pelajar" aria-label="Hantar nota">Hantar</button>
         <button type="button" class="annotation-tool annotation-tool-off" data-anno-tool="off" title="Tamat lukisan / pilih ayat" aria-label="Tamat lukisan">✋</button>
       `;
       const ctx = viewerShell.querySelector('.mushaf-context-bar');
@@ -300,10 +318,143 @@ export function createAnnotationLayer({
         if (typeof clearHighlights === 'function') clearHighlights();
         return;
       }
+      if (action === 'send-note') {
+        sendMushafNote(btn);
+        return;
+      }
       const next = btn.getAttribute('data-anno-tool');
       if (next) setTool(next);
     });
     updateCanvasInteractivity();
+  }
+
+  function notifyShareStatus(message, { error = false } = {}) {
+    try {
+      window.parent?.postMessage(
+        {
+          source: 'alhelmi-mushaf',
+          type: 'share-status',
+          message,
+          error: Boolean(error),
+        },
+        window.location.origin,
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function captureMushafNote() {
+    ensureCanvas();
+    redraw();
+    const svg = mushafHost?.querySelector('.mushaf-svg');
+    if (!svg) throw new Error('Mushaf belum siap');
+
+    const svgRect = svg.getBoundingClientRect();
+    const cssW = Math.max(1, Math.round(svgRect.width));
+    const cssH = Math.max(1, Math.round(svgRect.height));
+    const maxSide = 1600;
+    const scale = Math.min(2, maxSide / Math.max(cssW, cssH));
+    const outW = Math.max(1, Math.round(cssW * scale));
+    const outH = Math.max(1, Math.round(cssH * scale));
+
+    const out = document.createElement('canvas');
+    out.width = outW;
+    out.height = outH;
+    const octx = out.getContext('2d');
+    if (!octx) throw new Error('Canvas tidak disokong');
+    octx.fillStyle = '#e8f5e9';
+    octx.fillRect(0, 0, outW, outH);
+
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('width', String(cssW));
+    clone.setAttribute('height', String(cssH));
+    if (!clone.getAttribute('xmlns')) {
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    }
+    // Elak font luar rosakkan lukisan — guna family sedia ada dalam SVG.
+    const svgData = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await loadImage(url);
+      octx.drawImage(img, 0, 0, outW, outH);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+
+    if (canvas && canvas.width > 0 && canvas.height > 0) {
+      octx.drawImage(canvas, 0, 0, outW, outH);
+    }
+
+    let quality = 0.88;
+    let dataUrl = out.toDataURL('image/jpeg', quality);
+    while (estimateDataUrlBytes(dataUrl) > SHARE_MAX_BYTES && quality > 0.45) {
+      quality -= 0.12;
+      dataUrl = out.toDataURL('image/jpeg', quality);
+    }
+    if (estimateDataUrlBytes(dataUrl) > SHARE_MAX_BYTES) {
+      throw new Error('Imej terlalu besar — zum kecilkan sedikit');
+    }
+    return dataUrl;
+  }
+
+  async function sendMushafNote(btn) {
+    if (getRole() !== 'teacher' || sharing) return;
+    sharing = true;
+    const label = btn?.textContent;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '…';
+    }
+    notifyShareStatus('Mengambil screenshot nota…');
+    try {
+      const dataUrl = await captureMushafNote();
+      const page = pageKey();
+      const name = `Nota-halaman-${page}.jpg`;
+      notifyShareStatus(`Menghantar ${name}…`);
+      await new Promise((resolve, reject) => {
+        const onErr = (payload) => {
+          cleanup();
+          reject(new Error(payload?.error || 'Gagal hantar nota'));
+        };
+        const onState = (state) => {
+          if (state?.sharedPhotoName === name) {
+            cleanup();
+            resolve();
+          }
+        };
+        const timer = window.setTimeout(() => {
+          cleanup();
+          // Anggap berjaya jika tiada error — state mungkin sudah sampai.
+          resolve();
+        }, 4000);
+        function cleanup() {
+          window.clearTimeout(timer);
+          socket.off('share_photo_error', onErr);
+          socket.off('state', onState);
+        }
+        socket.on('share_photo_error', onErr);
+        socket.on('state', onState);
+        socket.emit('share_photo', {
+          mime: 'image/jpeg',
+          data: dataUrl,
+          name,
+          show: true,
+        });
+      });
+      notifyShareStatus(`Nota halaman ${page} dihantar kepada pelajar`);
+      setTool('off');
+    } catch (err) {
+      const msg = err?.message || 'Gagal hantar nota';
+      notifyShareStatus(msg, { error: true });
+    } finally {
+      sharing = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = label || 'Hantar';
+      }
+    }
   }
 
   function clearPage(page = pageKey()) {
