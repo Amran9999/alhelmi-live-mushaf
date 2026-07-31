@@ -6,6 +6,16 @@ const teacherName = (params.get('name') || 'Ustaz Farid').trim();
 const accessToken = (params.get('token') || '').trim();
 const localDev = params.get('local') === '1' || params.get('dev') === '1' || !accessToken;
 
+/** Dalam iframe portal — kamera tunggal dikendalikan app (PiP Jitsi boleh seret). */
+function isEmbeddedInPortal() {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+const embeddedInPortal = isEmbeddedInPortal();
+
 const els = {
   classTitle: document.getElementById('class-title'),
   teacherName: document.getElementById('teacher-name'),
@@ -135,12 +145,19 @@ function initTeacherAv() {
   const activeVideo = document.getElementById('active-reader-video');
   const activeCam = activeVideo?.closest('.active-cam');
   const activeAvLabel = document.getElementById('active-av-label');
+  const pipTeacher = document.getElementById('pip-teacher');
   const pipStudent = document.getElementById('pip-student');
   const pipStudentVideo = document.getElementById('pip-student-video');
   const pipStudentMedia = document.getElementById('pip-student-media');
   const pipStudentFallback = document.getElementById('pip-student-fallback');
   const pipStudentLabel = document.getElementById('pip-student-label');
   const pipStudentStatus = document.getElementById('pip-student-status');
+
+  // Elak dua kamera guru: dalam portal, PiP mushaf disembunyi (Jitsi float = satu kamera)
+  if (embeddedInPortal) {
+    if (pipTeacher) pipTeacher.hidden = true;
+    if (pipStudent) pipStudent.hidden = true;
+  }
 
   const peerBySocket = new Map(); // socketId -> { userId, name, stream, camOn, micOn }
 
@@ -177,8 +194,8 @@ function initTeacherAv() {
       if (activeAvLabel) activeAvLabel.textContent = 'Sedang Baca';
     }
 
-    // PiP terapung pelajar (boleh diseret)
-    if (match?.stream && pipStudent && pipStudentVideo) {
+    // PiP terapung pelajar (boleh diseret) — hanya bila bukan dalam portal
+    if (!embeddedInPortal && match?.stream && pipStudent && pipStudentVideo) {
       pipStudent.hidden = false;
       if (pipStudentVideo.srcObject !== match.stream) {
         pipStudentVideo.srcObject = match.stream;
@@ -203,8 +220,8 @@ function initTeacherAv() {
     socket,
     role: 'teacher',
     userId: 'teacher-local',
-    localVideo,
-    skipLocalMedia: false,
+    localVideo: embeddedInPortal ? null : localVideo,
+    skipLocalMedia: embeddedInPortal,
     onRemoteStream(socketId, stream) {
       const prev = peerBySocket.get(socketId) || {};
       peerBySocket.set(socketId, { ...prev, stream });
@@ -249,43 +266,43 @@ function initTeacherAv() {
     },
   });
 
-  mediaWrap?.classList.add('is-idle');
-  if (fallback) fallback.textContent = initials(teacherName);
+  if (!embeddedInPortal) {
+    mediaWrap?.classList.add('is-idle');
+    if (fallback) fallback.textContent = initials(teacherName);
 
-  function refreshToggleUi() {
-    const st = av.getState();
-    btnMic?.classList.toggle('is-off', !st.wantMic);
-    btnMic?.setAttribute('aria-pressed', st.wantMic ? 'true' : 'false');
-    btnMic && (btnMic.title = st.wantMic ? 'Matikan mikrofon' : 'Hidupkan mikrofon');
-    btnCam?.classList.toggle('is-off', !st.camOn);
-    btnCam?.setAttribute('aria-pressed', st.camOn ? 'true' : 'false');
-    btnCam && (btnCam.title = st.camOn ? 'Matikan kamera' : 'Hidupkan kamera');
-    mediaWrap?.classList.toggle('is-cam-off', !st.camOn);
-    localVideo?.classList.toggle('is-cam-off', !st.camOn);
-  }
+    function refreshToggleUi() {
+      const st = av.getState();
+      btnMic?.classList.toggle('is-off', !st.wantMic);
+      btnMic?.setAttribute('aria-pressed', st.wantMic ? 'true' : 'false');
+      btnMic && (btnMic.title = st.wantMic ? 'Matikan mikrofon' : 'Hidupkan mikrofon');
+      btnCam?.classList.toggle('is-off', !st.camOn);
+      btnCam?.setAttribute('aria-pressed', st.camOn ? 'true' : 'false');
+      btnCam && (btnCam.title = st.camOn ? 'Matikan kamera' : 'Hidupkan kamera');
+      mediaWrap?.classList.toggle('is-cam-off', !st.camOn);
+      localVideo?.classList.toggle('is-cam-off', !st.camOn);
+    }
 
-  btnMic?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    av.toggleMic();
-    refreshToggleUi();
-  });
-  btnCam?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    av.toggleCam();
-    refreshToggleUi();
-  });
-
-  av.startLocal()
-    .then(() => {
-      mediaWrap?.classList.remove('is-idle');
+    btnMic?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      av.toggleMic();
       refreshToggleUi();
-    })
-    .catch(() => {
-      mediaWrap?.classList.add('is-idle');
-      if (statusEl && !statusEl.textContent.includes('lihat sahaja')) {
-        statusEl.textContent = 'Seret PiP · benarkan kamera untuk siaran';
-      }
     });
+    btnCam?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      av.toggleCam();
+      refreshToggleUi();
+    });
+
+    av.startLocal()
+      .then(() => {
+        mediaWrap?.classList.remove('is-idle');
+        refreshToggleUi();
+      })
+      .catch(() => {
+        mediaWrap?.classList.add('is-idle');
+        if (statusEl) statusEl.textContent = 'Seret PiP · benarkan kamera untuk siaran';
+      });
+  }
 
   // Simpan peer meta dari roster/join
   socket.on('av-roster', (peers) => {
@@ -880,23 +897,25 @@ function initDraggablePip({
   resizeHandle?.addEventListener('pointercancel', endResize);
 }
 
-initDraggablePip({
-  pipId: 'pip-teacher',
-  shrinkId: 'pip-shrink',
-  growId: 'pip-grow',
-  largeId: 'pip-large',
-  resizeId: 'pip-resize',
-  storageSuffix: 'teacher',
-});
-initDraggablePip({
-  pipId: 'pip-student',
-  shrinkId: 'pip-student-shrink',
-  growId: 'pip-student-grow',
-  largeId: 'pip-student-large',
-  resizeId: 'pip-student-resize',
-  storageSuffix: 'student',
-  defaultWidth: 168,
-});
+if (!embeddedInPortal) {
+  initDraggablePip({
+    pipId: 'pip-teacher',
+    shrinkId: 'pip-shrink',
+    growId: 'pip-grow',
+    largeId: 'pip-large',
+    resizeId: 'pip-resize',
+    storageSuffix: 'teacher',
+  });
+  initDraggablePip({
+    pipId: 'pip-student',
+    shrinkId: 'pip-student-shrink',
+    growId: 'pip-student-grow',
+    largeId: 'pip-student-large',
+    resizeId: 'pip-student-resize',
+    storageSuffix: 'student',
+    defaultWidth: 168,
+  });
+}
 
 boot().catch((err) => {
   console.error(err);
