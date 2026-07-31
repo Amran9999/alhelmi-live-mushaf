@@ -32,9 +32,11 @@ const mushafQs = new URLSearchParams({
   role: 'student',
   embed: '1',
   viewer: '1',
+  shell: 'student',
+  annotate: '0',
   userId,
   name,
-  cb: 'classroom-27',
+  cb: 'classroom-28',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');

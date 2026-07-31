@@ -32,6 +32,8 @@ export function createAnnotationLayer({
   mushafHost,
   viewerShell,
   clearHighlights,
+  /** false = shell pelajar — tiada toolbar/edit walaupun role token = teacher */
+  canAnnotate = true,
 }) {
   /** @type {Map<number, object[]>} */
   const strokesByPage = new Map();
@@ -184,9 +186,13 @@ export function createAnnotationLayer({
     if (currentStroke) drawStroke(currentStroke, { preview: true });
   }
 
+  function teacherCanAnnotate() {
+    return Boolean(canAnnotate) && getRole() === 'teacher';
+  }
+
   function updateCanvasInteractivity() {
     if (!canvas) return;
-    const active = getRole() === 'teacher' && tool !== 'off';
+    const active = teacherCanAnnotate() && tool !== 'off';
     canvas.classList.toggle('is-drawing', active);
     canvas.style.pointerEvents = active ? 'auto' : 'none';
     document.body.classList.toggle('annotation-drawing', active);
@@ -194,12 +200,17 @@ export function createAnnotationLayer({
       toolbar.querySelectorAll('[data-anno-tool]').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-anno-tool') === tool);
       });
-      toolbar.hidden = getRole() !== 'teacher';
+      const show = teacherCanAnnotate();
+      toolbar.hidden = !show;
+      toolbar.style.display = show ? '' : 'none';
+      if (!show && toolbar.parentNode) {
+        /* kekal dalam DOM untuk guru; pelajar jangan nampak */
+      }
     }
   }
 
   function setTool(next) {
-    if (getRole() !== 'teacher') {
+    if (!teacherCanAnnotate()) {
       tool = 'off';
     } else {
       tool = next === tool ? 'off' : next;
@@ -280,6 +291,18 @@ export function createAnnotationLayer({
   function ensureToolbar() {
     if (!viewerShell) return;
     toolbar = document.getElementById('annotation-toolbar');
+
+    // Pelajar / shell pelajar: buang toolbar sepenuhnya.
+    if (!teacherCanAnnotate()) {
+      if (toolbar) {
+        toolbar.remove();
+        toolbar = null;
+      }
+      tool = 'off';
+      document.body.classList.remove('annotation-drawing');
+      return;
+    }
+
     if (!toolbar) {
       toolbar = document.createElement('div');
       toolbar.id = 'annotation-toolbar';
@@ -308,7 +331,7 @@ export function createAnnotationLayer({
     toolbar.dataset.bound = '1';
     toolbar.addEventListener('click', (event) => {
       const btn = event.target.closest('[data-anno-tool], [data-anno-action]');
-      if (!btn || getRole() !== 'teacher') return;
+      if (!btn || !teacherCanAnnotate()) return;
       const action = btn.getAttribute('data-anno-action');
       if (action === 'clear') {
         clearPage(pageKey());
@@ -400,7 +423,7 @@ export function createAnnotationLayer({
   }
 
   async function sendMushafNote(btn) {
-    if (getRole() !== 'teacher' || sharing) return;
+    if (!teacherCanAnnotate() || sharing) return;
     sharing = true;
     const label = btn?.textContent;
     if (btn) {
@@ -462,7 +485,7 @@ export function createAnnotationLayer({
   }
 
   function clearPage(page = pageKey()) {
-    if (getRole() !== 'teacher') return;
+    if (!teacherCanAnnotate()) return;
     const p = pageKey(page);
     setStrokes(p, []);
     currentStroke = null;

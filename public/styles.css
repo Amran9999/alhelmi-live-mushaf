@@ -1177,12 +1177,16 @@ body.annotation-drawing .mushaf-host text {
   cursor: crosshair;
 }
 
-.annotation-toolbar,
+/* Lalai: sembunyi. Guru sahaja nampak bar anotasi. */
+.annotation-toolbar {
+  display: none !important;
+}
+
 .role-teacher .annotation-toolbar.teacher-only {
   position: sticky;
   top: 0;
   z-index: 5;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
@@ -1194,8 +1198,14 @@ body.annotation-drawing .mushaf-host text {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
 }
 
-body.classroom-mode-baca .annotation-toolbar,
-body.classroom-fs.classroom-mode-baca .annotation-toolbar {
+/* Shell pelajar: jangan papar alat edit walaupun token guru (ujian pautan). */
+body.shell-student .annotation-toolbar,
+body.shell-student .annotation-toolbar.teacher-only {
+  display: none !important;
+}
+
+body.classroom-mode-baca.role-teacher .annotation-toolbar.teacher-only,
+body.classroom-fs.classroom-mode-baca.role-teacher .annotation-toolbar.teacher-only {
   top: 0;
 }
 
@@ -1290,7 +1300,8 @@ body.classroom-fs.classroom-mode-baca .annotation-toolbar {
   background: #475569;
 }
 
-.role-student .annotation-toolbar {
+.role-student .annotation-toolbar,
+.role-student .annotation-toolbar.teacher-only {
   display: none !important;
 }
 

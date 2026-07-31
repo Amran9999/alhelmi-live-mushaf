@@ -1,4 +1,4 @@
-import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-19';
+import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-20';
 
 const params = new URLSearchParams(window.location.search);
 const accessToken = (params.get('token') || '').trim();
@@ -9,6 +9,11 @@ const embedMode = params.get('embed') === '1';
 const viewerOnly = params.get('viewer') === '1';
 const queryRole = params.get('role') === 'teacher' ? 'teacher' : 'student';
 const queryName = (params.get('name') || '').trim();
+/** Shell pelajar (/student) — kunci alat anotasi walaupun JWT guru. */
+const studentShell =
+  params.get('shell') === 'student' ||
+  params.get('annotate') === '0' ||
+  (queryRole === 'student' && viewerOnly);
 const classGateRequired = Boolean(requestedRoom) && !accessToken && !localDev;
 /** Room/role dari query hanya untuk paparan awal; autoriti sebenar dari JWT (server) kecuali local. */
 let roomId = requestedRoom || 'kelas-a';
@@ -100,8 +105,9 @@ const annotationLayer = createAnnotationLayer({
   getPage: () => getEffectivePage(),
   mushafHost: els.mushafHost,
   viewerShell: els.viewerShell,
+  canAnnotate: !studentShell,
   clearHighlights: () => {
-    if (role !== 'teacher') return;
+    if (role !== 'teacher' || studentShell) return;
     teacherPatch({ highlightedVerse: null, highlightedAyahs: [], highlightedWords: [] });
     applyAyahHighlights();
   },
@@ -138,10 +144,11 @@ function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
 
   els.roomLabel.textContent = `Bilik: ${roomId}`;
   els.roleLabel.textContent = role === 'teacher' ? 'Guru' : 'Pelajar';
-  document.body.classList.remove('role-teacher', 'role-student');
+  document.body.classList.remove('role-teacher', 'role-student', 'shell-student');
   document.body.classList.add(role === 'teacher' ? 'role-teacher' : 'role-student');
+  if (studentShell) document.body.classList.add('shell-student');
 
-  if (role === 'teacher') {
+  if (role === 'teacher' && !studentShell) {
     initMenuToggle();
     syncTopbarHeight();
     window.addEventListener('resize', syncTopbarHeight);
@@ -171,6 +178,10 @@ function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
   }
   annotationLayer.start();
   annotationLayer.refresh();
+  // Pastikan toolbar hilang untuk pelajar selepas role disahkan.
+  if (studentShell || role !== 'teacher') {
+    document.getElementById('annotation-toolbar')?.remove();
+  }
 }
 
 async function init() {
