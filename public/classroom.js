@@ -6,21 +6,6 @@ const teacherName = (params.get('name') || 'Ustaz Farid').trim();
 const accessToken = (params.get('token') || '').trim();
 const localDev = params.get('local') === '1' || params.get('dev') === '1' || !accessToken;
 
-/** Video UI dikendalikan portal (app.alhelmi.com) — sembunyikan PiP mushaf lama. */
-function isHostVideoMode() {
-  if (params.get('pip') === '0' || params.get('hostAv') === '1' || params.get('av') === 'host') {
-    return true;
-  }
-  const host = location.hostname;
-  if (host === 'app.alhelmi.com' || host === 'learn.alhelmi.com') return true;
-  try {
-    return window.self !== window.top;
-  } catch {
-    return true;
-  }
-}
-const hostVideoMode = isHostVideoMode();
-
 const els = {
   classTitle: document.getElementById('class-title'),
   teacherName: document.getElementById('teacher-name'),
