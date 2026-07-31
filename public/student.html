@@ -7,11 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/classroom.css?v=22" />
+  <link rel="stylesheet" href="/classroom.css?v=24" />
 </head>
 <body class="role-student student-shell">
   <div class="student-view">
     <iframe id="mushaf-frame" title="Mushaf pelajar" src="about:blank" allow=""></iframe>
+    <div id="shared-photo-stage" class="shared-photo-stage" hidden>
+      <img id="shared-photo-img" alt="Foto dikongsi guru" />
+    </div>
 
     <div class="pip-teacher pip-student" id="pip-teacher-remote" role="group" aria-label="Kamera guru">
       <div class="pip-chrome">
@@ -44,6 +47,6 @@
     </footer>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/student.js?v=4"></script>
+  <script type="module" src="/student.js?v=5"></script>
 </body>
 </html>

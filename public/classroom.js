@@ -29,6 +29,16 @@ const els = {
   dockGo: document.getElementById('dock-go'),
   dockPageLabel: document.getElementById('dock-page-label'),
   dockZoomLabel: document.getElementById('dock-zoom-label'),
+  stageTitle: document.getElementById('stage-title'),
+  sharedPhotoStage: document.getElementById('shared-photo-stage'),
+  sharedPhotoImg: document.getElementById('shared-photo-img'),
+  mushafDock: document.querySelector('.mushaf-dock'),
+  btnStageMushaf: document.getElementById('btn-stage-mushaf'),
+  btnStagePhoto: document.getElementById('btn-stage-photo'),
+  sharePhotoInput: document.getElementById('share-photo-input'),
+  sharePhotoMeta: document.getElementById('share-photo-meta'),
+  shareStatus: document.getElementById('share-status'),
+  btnClearPhoto: document.getElementById('btn-clear-photo'),
 };
 
 els.classTitle.textContent = roomId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -283,6 +293,38 @@ function clampZoom(n) {
   return Math.min(180, Math.max(70, Number(n) || 100));
 }
 
+function applyStageView(state) {
+  const hasPhoto = Boolean(state.sharedPhotoUrl);
+  const showPhoto = state.stageView === 'photo' && hasPhoto;
+
+  els.btnStagePhoto.disabled = !hasPhoto;
+  els.btnStageMushaf.classList.toggle('active', !showPhoto);
+  els.btnStagePhoto.classList.toggle('active', showPhoto);
+  els.btnClearPhoto.hidden = !hasPhoto;
+
+  if (hasPhoto) {
+    els.sharePhotoMeta.textContent = state.sharedPhotoName || 'Foto dikongsi';
+    if (els.sharedPhotoImg.src !== new URL(state.sharedPhotoUrl, window.location.origin).href) {
+      els.sharedPhotoImg.src = state.sharedPhotoUrl;
+    }
+  } else {
+    els.sharePhotoMeta.textContent = 'Tiada foto dikongsi';
+    els.sharedPhotoImg.removeAttribute('src');
+  }
+
+  els.mushafFrame.classList.toggle('is-hidden-stage', showPhoto);
+  els.sharedPhotoStage.hidden = !showPhoto;
+  els.mushafDock?.classList.toggle('is-hidden-stage', showPhoto);
+  if (els.stageTitle) {
+    els.stageTitle.textContent = showPhoto
+      ? state.sharedPhotoName || 'Foto dikongsi'
+      : 'Mushaf Madinah';
+  }
+  if (els.shareStatus) {
+    els.shareStatus.textContent = showPhoto ? 'Foto' : 'Mushaf';
+  }
+}
+
 function applyState(state) {
   roomState = state;
   const pageSync = state.pageSync !== false;
@@ -298,6 +340,8 @@ function applyState(state) {
   document.querySelectorAll('[data-mode]').forEach((btn) => {
     btn.classList.toggle('active', btn.getAttribute('data-mode') === (state.mode || 'bacaan'));
   });
+
+  applyStageView(state);
 
   const fifo = Array.isArray(state.fifo) ? state.fifo : [];
   const waiting = fifo.filter((s) => s.status === 'waiting' || s.status === 'active');
@@ -421,6 +465,51 @@ els.pageSync.addEventListener('change', () => {
   const on = els.pageSync.checked;
   els.pageSyncLabel.textContent = on ? 'Mod Sync: Aktif' : 'Mod Sync: Off';
   patch({ pageSync: on });
+});
+
+els.btnStageMushaf?.addEventListener('click', () => patch({ stageView: 'mushaf' }));
+els.btnStagePhoto?.addEventListener('click', () => {
+  if (!roomState?.sharedPhotoUrl) return;
+  patch({ stageView: 'photo' });
+});
+els.btnClearPhoto?.addEventListener('click', () => socket.emit('clear_photo'));
+
+els.sharePhotoInput?.addEventListener('change', async () => {
+  const file = els.sharePhotoInput.files?.[0];
+  els.sharePhotoInput.value = '';
+  if (!file) return;
+  const okType = file.type === 'image/jpeg' || file.type === 'image/png';
+  if (!okType) {
+    els.sharePhotoMeta.textContent = 'Hanya JPG atau PNG';
+    return;
+  }
+  if (file.size > 6 * 1024 * 1024) {
+    els.sharePhotoMeta.textContent = 'Saiz maksimum 6MB';
+    return;
+  }
+  els.sharePhotoMeta.textContent = `Memuat naik ${file.name}…`;
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('baca gagal'));
+      reader.readAsDataURL(file);
+    });
+    socket.emit('share_photo', {
+      mime: file.type,
+      data: dataUrl,
+      name: file.name,
+      show: true,
+    });
+  } catch {
+    els.sharePhotoMeta.textContent = 'Gagal baca fail';
+  }
+});
+
+socket.on('share_photo_error', (payload) => {
+  if (els.sharePhotoMeta) {
+    els.sharePhotoMeta.textContent = payload?.error || 'Gagal kongsi foto';
+  }
 });
 
 /* Keyboard skrol → iframe mushaf (fokus mungkin di shell, bukan iframe) */

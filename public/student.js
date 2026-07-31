@@ -92,6 +92,21 @@ btnCam.addEventListener('click', () => {
   refreshToggleUi();
 });
 
+const sharedPhotoStage = document.getElementById('shared-photo-stage');
+const sharedPhotoImg = document.getElementById('shared-photo-img');
+
+function applyStageView(state) {
+  const showPhoto = state.stageView === 'photo' && state.sharedPhotoUrl;
+  frame.classList.toggle('is-hidden-stage', Boolean(showPhoto));
+  if (sharedPhotoStage) sharedPhotoStage.hidden = !showPhoto;
+  if (showPhoto && sharedPhotoImg) {
+    const next = new URL(state.sharedPhotoUrl, window.location.origin).href;
+    if (sharedPhotoImg.src !== next) sharedPhotoImg.src = state.sharedPhotoUrl;
+  } else if (sharedPhotoImg) {
+    sharedPhotoImg.removeAttribute('src');
+  }
+}
+
 socket.on('state', (state) => {
   roomState = state || {};
   const active = state.activeReaderName || '—';
@@ -99,7 +114,10 @@ socket.on('state', (state) => {
   const turn = meActive ? 'Giliran Anda: Sedang Baca' : 'Giliran Anda: Menunggu';
   const sync = state.pageSync === false ? 'Sync Off' : 'Sync On';
   const mode = state.mode === 'hafazan' ? 'Hafazan' : 'Bacaan';
-  statusEl.textContent = `Status: Berlangsung · ${turn} · ${mode} · ${sync} · Guru menyemak: ${active}`;
+  const stage = state.stageView === 'photo' && state.sharedPhotoUrl ? 'Foto' : 'Mushaf';
+  statusEl.textContent = `Status: Berlangsung · ${turn} · ${mode} · ${sync} · Paparan: ${stage} · Guru menyemak: ${active}`;
+
+  applyStageView(state);
 
   if (state.muteAllExceptActive) {
     av.applyMutePolicy({

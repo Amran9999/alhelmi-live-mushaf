@@ -277,6 +277,65 @@ body {
   border: 0;
   background: #e8e0d4;
 }
+#mushaf-frame.is-hidden-stage { display: none; }
+
+.shared-photo-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at center, rgba(255,255,255,0.08), transparent 55%),
+    #161b20;
+  overflow: auto;
+}
+.shared-photo-stage[hidden] { display: none !important; }
+.shared-photo-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.share-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.share-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.share-head h2 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+#share-status {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.share-stage-seg { align-self: flex-start; }
+.share-upload-btn { cursor: pointer; text-align: center; }
+.share-file-meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.35;
+  word-break: break-word;
+}
+.mushaf-dock.is-hidden-stage { display: none; }
 
 /* Dock SHELL — satu baris penuh; carian isi ruang kosong */
 .mushaf-dock {
@@ -546,7 +605,12 @@ body {
   display: flex;
   flex-direction: column;
 }
-.student-view #mushaf-frame { flex: 1; }
+.student-view #mushaf-frame { flex: 1; min-height: 0; }
+.student-view #mushaf-frame.is-hidden-stage { display: none; }
+.student-view .shared-photo-stage {
+  flex: 1;
+  min-height: 0;
+}
 .pip-student {
   top: auto;
   bottom: 3.4rem;

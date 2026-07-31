@@ -1,9 +1,9 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import {
   assertMushafClaims,
   resolveMushafJwtSecret,
@@ -107,6 +107,10 @@ const DEFAULT_STATE = {
   webcamLayout: 'pip',
   webcamTeacher: true,
   webcamStudents: false,
+  /** Paparan utama bilik: mushaf | photo */
+  stageView: 'mushaf',
+  sharedPhotoUrl: null,
+  sharedPhotoName: '',
   activeReaderId: null,
   activeReaderName: '',
   muteAllExceptActive: false,
@@ -115,6 +119,39 @@ const DEFAULT_STATE = {
 
 const rooms = new Map();
 const svgCache = new Map();
+const UPLOADS_DIR = join(__dirname, 'uploads');
+const MAX_SHARE_BYTES = 6 * 1024 * 1024;
+const SHARE_MIME = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+};
+
+try {
+  mkdirSync(UPLOADS_DIR, { recursive: true });
+} catch {
+  /* ignore */
+}
+
+function safeRoomSlug(roomId) {
+  return String(roomId || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 64);
+}
+
+function removeSharedPhotoFile(urlPath) {
+  if (!urlPath || typeof urlPath !== 'string') return;
+  if (!urlPath.startsWith('/uploads/')) return;
+  const name = basename(urlPath);
+  if (!name || name.includes('..')) return;
+  const full = join(UPLOADS_DIR, name);
+  try {
+    if (existsSync(full)) unlinkSync(full);
+  } catch {
+    /* ignore */
+  }
+}
 
 function brandMushafSvg(svgText) {
   return svgText.replace(/islamic\.app/gi, MUSHAF_BRAND_TITLE);
@@ -317,6 +354,17 @@ app.get('/health', (_req, res) => {
 
 app.use(express.static(join(__dirname, 'public'), { index: false }));
 app.use('/data', express.static(join(__dirname, 'data')));
+app.use(
+  '/uploads',
+  express.static(UPLOADS_DIR, {
+    fallthrough: false,
+    maxAge: IS_PROD ? '1h' : 0,
+    setHeaders(res) {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', IS_PROD ? 'public, max-age=3600' : 'no-store');
+    },
+  }),
+);
 
 app.post('/api/room/:roomId/active-reader', express.json({ limit: '32kb' }), (req, res) => {
   const roomId = String(req.params.roomId || '').trim();
@@ -470,9 +518,96 @@ io.on('connection', (socket) => {
     if (!patch || typeof patch !== 'object') return;
 
     const state = getRoom(currentRoom);
-    const next = { ...state, ...patch, updatedAt: Date.now() };
+    const {
+      sharedPhotoUrl: _ignoreUrl,
+      sharedPhotoName: _ignoreName,
+      ...safePatch
+    } = patch;
+    const next = { ...state, ...safePatch, updatedAt: Date.now() };
+    // URL foto hanya melalui share_photo / clear_photo
+    next.sharedPhotoUrl = state.sharedPhotoUrl;
+    next.sharedPhotoName = state.sharedPhotoName;
     if (patch.mode === 'bacaan') next.hidden = false;
+    if (patch.stageView === 'photo') {
+      next.stageView = state.sharedPhotoUrl ? 'photo' : 'mushaf';
+    } else if (patch.stageView === 'mushaf') {
+      next.stageView = 'mushaf';
+    }
     publishRoom(currentRoom, next);
+  });
+
+  /** Guru muat naik JPG/PNG (base64) untuk dikongsi ke bilik. */
+  socket.on('share_photo', (payload = {}) => {
+    if (role !== 'teacher' || !currentRoom) return;
+    const mime = String(payload.mime || '').toLowerCase().trim();
+    const ext = SHARE_MIME[mime];
+    if (!ext) {
+      socket.emit('share_photo_error', { error: 'Hanya JPG atau PNG dibenarkan' });
+      return;
+    }
+    const raw = String(payload.data || '').replace(/^data:image\/\w+;base64,/, '');
+    if (!raw) {
+      socket.emit('share_photo_error', { error: 'Fail kosong' });
+      return;
+    }
+    let buf;
+    try {
+      buf = Buffer.from(raw, 'base64');
+    } catch {
+      socket.emit('share_photo_error', { error: 'Fail rosak' });
+      return;
+    }
+    if (!buf.length || buf.length > MAX_SHARE_BYTES) {
+      socket.emit('share_photo_error', { error: 'Saiz maksimum 6MB' });
+      return;
+    }
+    // Magic bytes asas
+    const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
+    const isPng =
+      buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+    if ((ext === 'jpg' && !isJpeg) || (ext === 'png' && !isPng)) {
+      socket.emit('share_photo_error', { error: 'Format fail tidak sah' });
+      return;
+    }
+
+    const slug = safeRoomSlug(currentRoom) || 'room';
+    const fileName = `${slug}-${Date.now()}.${ext}`;
+    const fullPath = join(UPLOADS_DIR, fileName);
+    try {
+      writeFileSync(fullPath, buf);
+    } catch (err) {
+      console.error('share_photo write', err);
+      socket.emit('share_photo_error', { error: 'Gagal simpan fail' });
+      return;
+    }
+
+    const state = getRoom(currentRoom);
+    removeSharedPhotoFile(state.sharedPhotoUrl);
+    const name = String(payload.name || fileName)
+      .trim()
+      .replace(/[^\w.\- ()[\]]+/g, '_')
+      .slice(0, 120);
+    const showNow = payload.show !== false;
+    publishRoom(currentRoom, {
+      ...state,
+      sharedPhotoUrl: `/uploads/${fileName}`,
+      sharedPhotoName: name || fileName,
+      stageView: showNow ? 'photo' : state.stageView === 'photo' ? 'photo' : 'mushaf',
+      updatedAt: Date.now(),
+    });
+  });
+
+  socket.on('clear_photo', () => {
+    if (role !== 'teacher' || !currentRoom) return;
+    const state = getRoom(currentRoom);
+    removeSharedPhotoFile(state.sharedPhotoUrl);
+    publishRoom(currentRoom, {
+      ...state,
+      sharedPhotoUrl: null,
+      sharedPhotoName: '',
+      stageView: 'mushaf',
+      updatedAt: Date.now(),
+    });
   });
 
   socket.on('fifo_action', (action = {}) => {
