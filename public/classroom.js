@@ -47,6 +47,8 @@ const els = {
   btnStagePhoto: document.getElementById('btn-stage-photo'),
   sharePhotoInput: document.getElementById('share-photo-input'),
   sharePhotoMeta: document.getElementById('share-photo-meta'),
+  sharePhotoGallery: document.getElementById('share-photo-gallery'),
+  stagePhotoStrip: document.getElementById('stage-photo-strip'),
   shareStatus: document.getElementById('share-status'),
   btnClearPhoto: document.getElementById('btn-clear-photo'),
   btnScreenshotNote: document.getElementById('btn-screenshot-note'),
@@ -68,7 +70,7 @@ const mushafQs = new URLSearchParams({
   embed: '1',
   viewer: '1',
   name: teacherName,
-  cb: 'classroom-25',
+  cb: 'classroom-26',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -341,8 +343,66 @@ function clampZoom(n) {
   return Math.min(180, Math.max(70, Number(n) || 100));
 }
 
+function getSharedPhotos(state = roomState) {
+  const list = Array.isArray(state?.sharedPhotos) ? state.sharedPhotos : [];
+  if (list.length) return list;
+  if (state?.sharedPhotoUrl) {
+    return [{
+      id: state.sharedPhotoId || 'active',
+      url: state.sharedPhotoUrl,
+      name: state.sharedPhotoName || 'Foto',
+    }];
+  }
+  return [];
+}
+
+function renderPhotoGallery(state) {
+  const photos = getSharedPhotos(state);
+  const activeId = state.sharedPhotoId || photos[photos.length - 1]?.id;
+  const gallery = els.sharePhotoGallery;
+  if (!gallery) return;
+
+  gallery.hidden = photos.length === 0;
+  gallery.innerHTML = '';
+  photos.forEach((photo, index) => {
+    const li = document.createElement('li');
+    li.className = 'share-photo-item' + (photo.id === activeId ? ' is-active' : '');
+    li.innerHTML = `
+      <button type="button" class="share-photo-thumb" data-photo-id="${photo.id}" title="Papar ${photo.name}">
+        <img src="${photo.url}" alt="" />
+        <span>${index + 1}</span>
+      </button>
+      <a class="share-photo-dl" href="${photo.url}" download="${photo.name || `nota-${index + 1}.jpg`}">Muat turun</a>
+      <button type="button" class="share-photo-remove" data-remove-id="${photo.id}" title="Buang">×</button>
+    `;
+    gallery.appendChild(li);
+  });
+}
+
+function renderStagePhotoStrip(state) {
+  const photos = getSharedPhotos(state);
+  const strip = els.stagePhotoStrip;
+  if (!strip) return;
+  const showPhoto = state.stageView === 'photo' && photos.length > 0;
+  strip.hidden = !showPhoto || photos.length < 2;
+  if (strip.hidden) {
+    strip.innerHTML = '';
+    return;
+  }
+  const activeId = state.sharedPhotoId || photos[photos.length - 1]?.id;
+  strip.innerHTML = photos
+    .map(
+      (photo, index) => `
+      <button type="button" class="stage-photo-chip${photo.id === activeId ? ' is-active' : ''}" data-photo-id="${photo.id}">
+        ${index + 1}
+      </button>`,
+    )
+    .join('');
+}
+
 function applyStageView(state) {
-  const hasPhoto = Boolean(state.sharedPhotoUrl);
+  const photos = getSharedPhotos(state);
+  const hasPhoto = photos.length > 0;
   const showPhoto = state.stageView === 'photo' && hasPhoto;
 
   els.btnStagePhoto.disabled = !hasPhoto;
@@ -351,14 +411,18 @@ function applyStageView(state) {
   els.btnClearPhoto.hidden = !hasPhoto;
 
   if (hasPhoto) {
-    els.sharePhotoMeta.textContent = state.sharedPhotoName || 'Foto dikongsi';
-    if (els.sharedPhotoImg.src !== new URL(state.sharedPhotoUrl, window.location.origin).href) {
-      els.sharedPhotoImg.src = state.sharedPhotoUrl;
+    els.sharePhotoMeta.textContent = `${photos.length}/10 foto · aktif: ${state.sharedPhotoName || 'Nota'}`;
+    if (state.sharedPhotoUrl) {
+      const next = new URL(state.sharedPhotoUrl, window.location.origin).href;
+      if (els.sharedPhotoImg.src !== next) els.sharedPhotoImg.src = state.sharedPhotoUrl;
     }
   } else {
-    els.sharePhotoMeta.textContent = 'Tiada foto dikongsi';
+    els.sharePhotoMeta.textContent = 'Tiada foto — maks 10 nota sesi';
     els.sharedPhotoImg.removeAttribute('src');
   }
+
+  renderPhotoGallery(state);
+  renderStagePhotoStrip(state);
 
   els.mushafFrame.classList.toggle('is-hidden-stage', showPhoto);
   els.sharedPhotoStage.hidden = !showPhoto;
@@ -369,7 +433,7 @@ function applyStageView(state) {
       : 'Mushaf Madinah';
   }
   if (els.shareStatus) {
-    els.shareStatus.textContent = showPhoto ? 'Foto' : 'Mushaf';
+    els.shareStatus.textContent = showPhoto ? `Foto ${photos.length}/10` : 'Mushaf';
   }
 }
 
@@ -521,6 +585,24 @@ els.btnStagePhoto?.addEventListener('click', () => {
   patch({ stageView: 'photo' });
 });
 els.btnClearPhoto?.addEventListener('click', () => socket.emit('clear_photo'));
+
+els.sharePhotoGallery?.addEventListener('click', (event) => {
+  const thumb = event.target.closest('[data-photo-id]');
+  if (thumb?.dataset.photoId) {
+    socket.emit('select_photo', { id: thumb.dataset.photoId, show: true });
+    return;
+  }
+  const removeBtn = event.target.closest('[data-remove-id]');
+  if (removeBtn?.dataset.removeId) {
+    socket.emit('remove_photo', { id: removeBtn.dataset.removeId });
+  }
+});
+
+els.stagePhotoStrip?.addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-photo-id]');
+  if (!chip?.dataset.photoId) return;
+  socket.emit('select_photo', { id: chip.dataset.photoId, show: true });
+});
 
 els.btnScreenshotNote?.addEventListener('click', () => {
   if (els.sharePhotoMeta) els.sharePhotoMeta.textContent = 'Mengambil screenshot nota…';

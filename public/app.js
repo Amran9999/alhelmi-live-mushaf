@@ -1,4 +1,4 @@
-import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-18';
+import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-19';
 
 const params = new URLSearchParams(window.location.search);
 const accessToken = (params.get('token') || '').trim();

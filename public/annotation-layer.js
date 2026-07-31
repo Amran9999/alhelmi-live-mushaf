@@ -419,7 +419,11 @@ export function createAnnotationLayer({
           reject(new Error(payload?.error || 'Gagal hantar nota'));
         };
         const onState = (state) => {
-          if (state?.sharedPhotoName === name) {
+          const photos = Array.isArray(state?.sharedPhotos) ? state.sharedPhotos : [];
+          const matched =
+            state?.sharedPhotoName === name ||
+            photos.some((p) => p?.name === name);
+          if (matched) {
             cleanup();
             resolve();
           }

@@ -109,6 +109,9 @@ const DEFAULT_STATE = {
   webcamStudents: false,
   /** Paparan utama bilik: mushaf | photo */
   stageView: 'mushaf',
+  /** Galeri nota/foto sesi (maks 10). sharedPhotoUrl = foto aktif dipapar. */
+  sharedPhotos: [],
+  sharedPhotoId: null,
   sharedPhotoUrl: null,
   sharedPhotoName: '',
   activeReaderId: null,
@@ -123,6 +126,7 @@ const roomAnnotations = new Map();
 const svgCache = new Map();
 const UPLOADS_DIR = join(__dirname, 'uploads');
 const MAX_SHARE_BYTES = 6 * 1024 * 1024;
+const MAX_SHARED_PHOTOS = 10;
 const MAX_ANNOTATION_STROKES_PER_PAGE = 250;
 const MAX_ANNOTATION_POINTS = 400;
 const ANNOTATION_COLORS = new Set(['#e11d48', '#16a34a']);
@@ -156,6 +160,49 @@ function removeSharedPhotoFile(urlPath) {
   } catch {
     /* ignore */
   }
+}
+
+function normalizeSharedPhotos(state = {}) {
+  const list = Array.isArray(state.sharedPhotos)
+    ? state.sharedPhotos
+        .filter((p) => p && typeof p.url === 'string' && p.url.startsWith('/uploads/'))
+        .map((p) => ({
+          id: String(p.id || '').slice(0, 64),
+          url: String(p.url),
+          name: String(p.name || 'Foto').slice(0, 120),
+          createdAt: Number(p.createdAt) || Date.now(),
+        }))
+        .filter((p) => p.id)
+    : [];
+  if (!list.length && state.sharedPhotoUrl && String(state.sharedPhotoUrl).startsWith('/uploads/')) {
+    list.push({
+      id: `legacy-${Date.now()}`,
+      url: String(state.sharedPhotoUrl),
+      name: String(state.sharedPhotoName || 'Foto').slice(0, 120),
+      createdAt: Date.now(),
+    });
+  }
+  return list.slice(0, MAX_SHARED_PHOTOS);
+}
+
+function withActiveSharedPhoto(state, photos, preferredId = null) {
+  const list = Array.isArray(photos) ? photos : [];
+  let active = null;
+  if (preferredId) active = list.find((p) => p.id === preferredId) || null;
+  if (!active && state.sharedPhotoId) {
+    active = list.find((p) => p.id === state.sharedPhotoId) || null;
+  }
+  if (!active && state.sharedPhotoUrl) {
+    active = list.find((p) => p.url === state.sharedPhotoUrl) || null;
+  }
+  if (!active) active = list.length ? list[list.length - 1] : null;
+  return {
+    ...state,
+    sharedPhotos: list,
+    sharedPhotoId: active?.id || null,
+    sharedPhotoUrl: active?.url || null,
+    sharedPhotoName: active?.name || '',
+  };
 }
 
 function brandMushafSvg(svgText) {
@@ -582,15 +629,17 @@ io.on('connection', (socket) => {
     const {
       sharedPhotoUrl: _ignoreUrl,
       sharedPhotoName: _ignoreName,
+      sharedPhotoId: _ignoreId,
+      sharedPhotos: _ignorePhotos,
       ...safePatch
     } = patch;
     const next = { ...state, ...safePatch, updatedAt: Date.now() };
-    // URL foto hanya melalui share_photo / clear_photo
-    next.sharedPhotoUrl = state.sharedPhotoUrl;
-    next.sharedPhotoName = state.sharedPhotoName;
+    // URL/galeri foto hanya melalui share_photo / clear_photo / select_photo
+    const photos = normalizeSharedPhotos(state);
+    Object.assign(next, withActiveSharedPhoto(state, photos));
     if (patch.mode === 'bacaan') next.hidden = false;
     if (patch.stageView === 'photo') {
-      next.stageView = state.sharedPhotoUrl ? 'photo' : 'mushaf';
+      next.stageView = next.sharedPhotoUrl ? 'photo' : 'mushaf';
     } else if (patch.stageView === 'mushaf') {
       next.stageView = 'mushaf';
     }
@@ -685,17 +734,60 @@ io.on('connection', (socket) => {
     }
 
     const state = getRoom(currentRoom);
-    removeSharedPhotoFile(state.sharedPhotoUrl);
     const name = String(payload.name || fileName)
       .trim()
       .replace(/[^\w.\- ()[\]]+/g, '_')
       .slice(0, 120);
     const showNow = payload.show !== false;
+    const entry = {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      url: `/uploads/${fileName}`,
+      name: name || fileName,
+      createdAt: Date.now(),
+    };
+    let photos = normalizeSharedPhotos(state);
+    photos.push(entry);
+    while (photos.length > MAX_SHARED_PHOTOS) {
+      const dropped = photos.shift();
+      if (dropped?.url) removeSharedPhotoFile(dropped.url);
+    }
+    const next = withActiveSharedPhoto(state, photos, entry.id);
     publishRoom(currentRoom, {
-      ...state,
-      sharedPhotoUrl: `/uploads/${fileName}`,
-      sharedPhotoName: name || fileName,
+      ...next,
       stageView: showNow ? 'photo' : state.stageView === 'photo' ? 'photo' : 'mushaf',
+      updatedAt: Date.now(),
+    });
+  });
+
+  /** Guru pilih foto aktif dalam galeri (untuk paparan Foto). */
+  socket.on('select_photo', (payload = {}) => {
+    if (role !== 'teacher' || !currentRoom) return;
+    const state = getRoom(currentRoom);
+    const photos = normalizeSharedPhotos(state);
+    const id = String(payload.id || '').trim();
+    if (!id || !photos.some((p) => p.id === id)) return;
+    const next = withActiveSharedPhoto(state, photos, id);
+    publishRoom(currentRoom, {
+      ...next,
+      stageView: payload.show === false ? state.stageView : 'photo',
+      updatedAt: Date.now(),
+    });
+  });
+
+  /** Guru buang satu foto dari galeri. */
+  socket.on('remove_photo', (payload = {}) => {
+    if (role !== 'teacher' || !currentRoom) return;
+    const state = getRoom(currentRoom);
+    const id = String(payload.id || '').trim();
+    let photos = normalizeSharedPhotos(state);
+    const target = photos.find((p) => p.id === id);
+    if (!target) return;
+    removeSharedPhotoFile(target.url);
+    photos = photos.filter((p) => p.id !== id);
+    const next = withActiveSharedPhoto(state, photos);
+    publishRoom(currentRoom, {
+      ...next,
+      stageView: next.sharedPhotoUrl ? state.stageView : 'mushaf',
       updatedAt: Date.now(),
     });
   });
@@ -703,9 +795,14 @@ io.on('connection', (socket) => {
   socket.on('clear_photo', () => {
     if (role !== 'teacher' || !currentRoom) return;
     const state = getRoom(currentRoom);
-    removeSharedPhotoFile(state.sharedPhotoUrl);
+    for (const photo of normalizeSharedPhotos(state)) {
+      removeSharedPhotoFile(photo.url);
+    }
+    if (state.sharedPhotoUrl) removeSharedPhotoFile(state.sharedPhotoUrl);
     publishRoom(currentRoom, {
       ...state,
+      sharedPhotos: [],
+      sharedPhotoId: null,
       sharedPhotoUrl: null,
       sharedPhotoName: '',
       stageView: 'mushaf',

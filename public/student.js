@@ -17,6 +17,12 @@ const selfFallback = document.getElementById('self-fallback');
 const selfStatus = document.getElementById('self-av-status');
 const btnMic = document.getElementById('self-mic');
 const btnCam = document.getElementById('self-cam');
+const sharedPhotoStage = document.getElementById('shared-photo-stage');
+const sharedPhotoImg = document.getElementById('shared-photo-img');
+const stagePhotoStrip = document.getElementById('stage-photo-strip');
+const studentNotesBar = document.getElementById('student-notes-bar');
+const studentNotesList = document.getElementById('student-notes-list');
+const studentNotesCount = document.getElementById('student-notes-count');
 
 const mushafQs = new URLSearchParams({
   room: roomId,
@@ -25,7 +31,7 @@ const mushafQs = new URLSearchParams({
   viewer: '1',
   userId,
   name,
-  cb: 'classroom-25',
+  cb: 'classroom-26',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -40,9 +46,10 @@ selfFallback.textContent = name
 
 const socket = io({ autoConnect: false });
 let roomState = {};
+/** Pelajar boleh pilih foto lokal untuk paparan/muat turun tanpa kawal guru. */
+let localPreviewId = null;
 
 const remoteMap = new Map();
-// Guru video diguna bila stream remote masuk (socketId guru tidak diketahui awal)
 
 const av = createClassroomAv({
   socket,
@@ -51,8 +58,6 @@ const av = createClassroomAv({
   localVideo: selfVideo,
   remoteVideoMap: remoteMap,
   onRemoteStream(socketId, stream) {
-    // Papar aliran jauh sebagai guru (star: hanya guru menghantar ke pelajar dulu;
-    // pelajar juga menghantar ke guru — stream jauh di sini = guru)
     teacherVideo.srcObject = stream;
     teacherVideo.play().catch(() => {});
     teacherMedia.classList.remove('is-idle');
@@ -92,29 +97,116 @@ btnCam.addEventListener('click', () => {
   refreshToggleUi();
 });
 
-const sharedPhotoStage = document.getElementById('shared-photo-stage');
-const sharedPhotoImg = document.getElementById('shared-photo-img');
+function getSharedPhotos(state = roomState) {
+  const list = Array.isArray(state?.sharedPhotos) ? state.sharedPhotos : [];
+  if (list.length) return list;
+  if (state?.sharedPhotoUrl) {
+    return [{
+      id: state.sharedPhotoId || 'active',
+      url: state.sharedPhotoUrl,
+      name: state.sharedPhotoName || 'Foto',
+    }];
+  }
+  return [];
+}
+
+function resolvePreviewPhoto(state) {
+  const photos = getSharedPhotos(state);
+  if (!photos.length) return null;
+  if (localPreviewId) {
+    const found = photos.find((p) => p.id === localPreviewId);
+    if (found) return found;
+  }
+  return photos.find((p) => p.id === state.sharedPhotoId) || photos[photos.length - 1];
+}
+
+function renderStudentNotes(state) {
+  const photos = getSharedPhotos(state);
+  if (studentNotesCount) studentNotesCount.textContent = `${photos.length}/10`;
+  if (studentNotesBar) studentNotesBar.hidden = photos.length === 0;
+  if (!studentNotesList) return;
+  studentNotesList.innerHTML = '';
+  photos.forEach((photo, index) => {
+    const li = document.createElement('li');
+    const active = resolvePreviewPhoto(state)?.id === photo.id;
+    li.className = active ? 'is-active' : '';
+    li.innerHTML = `
+      <button type="button" class="student-note-preview" data-photo-id="${photo.id}">
+        <img src="${photo.url}" alt="" />
+        <span>Nota ${index + 1}</span>
+      </button>
+      <a class="student-note-dl" href="${photo.url}" download="${photo.name || `nota-${index + 1}.jpg`}">Muat turun</a>
+    `;
+    studentNotesList.appendChild(li);
+  });
+}
+
+function renderStageStrip(state) {
+  const photos = getSharedPhotos(state);
+  if (!stagePhotoStrip) return;
+  const showPhoto = state.stageView === 'photo' && photos.length > 0;
+  stagePhotoStrip.hidden = !showPhoto || photos.length < 2;
+  if (stagePhotoStrip.hidden) {
+    stagePhotoStrip.innerHTML = '';
+    return;
+  }
+  const activeId = resolvePreviewPhoto(state)?.id;
+  stagePhotoStrip.innerHTML = photos
+    .map(
+      (photo, index) => `
+      <button type="button" class="stage-photo-chip${photo.id === activeId ? ' is-active' : ''}" data-photo-id="${photo.id}">
+        ${index + 1}
+      </button>`,
+    )
+    .join('');
+}
 
 function applyStageView(state) {
-  const showPhoto = state.stageView === 'photo' && state.sharedPhotoUrl;
+  const photos = getSharedPhotos(state);
+  const showPhoto = state.stageView === 'photo' && photos.length > 0;
+  const preview = resolvePreviewPhoto(state);
+
   frame.classList.toggle('is-hidden-stage', Boolean(showPhoto));
   if (sharedPhotoStage) sharedPhotoStage.hidden = !showPhoto;
-  if (showPhoto && sharedPhotoImg) {
-    const next = new URL(state.sharedPhotoUrl, window.location.origin).href;
-    if (sharedPhotoImg.src !== next) sharedPhotoImg.src = state.sharedPhotoUrl;
+
+  if (showPhoto && sharedPhotoImg && preview) {
+    const next = new URL(preview.url, window.location.origin).href;
+    if (sharedPhotoImg.src !== next) sharedPhotoImg.src = preview.url;
   } else if (sharedPhotoImg) {
     sharedPhotoImg.removeAttribute('src');
   }
+
+  renderStudentNotes(state);
+  renderStageStrip(state);
 }
+
+studentNotesList?.addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-photo-id]');
+  if (!btn?.dataset.photoId) return;
+  localPreviewId = btn.dataset.photoId;
+  applyStageView(roomState);
+});
+
+stagePhotoStrip?.addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-photo-id]');
+  if (!chip?.dataset.photoId) return;
+  localPreviewId = chip.dataset.photoId;
+  applyStageView(roomState);
+});
 
 socket.on('state', (state) => {
   roomState = state || {};
+  const photos = getSharedPhotos(roomState);
+  if (localPreviewId && !photos.some((p) => p.id === localPreviewId)) {
+    localPreviewId = null;
+  }
+
   const active = state.activeReaderName || '—';
   const meActive = state.activeReaderId && state.activeReaderId === userId;
   const turn = meActive ? 'Giliran Anda: Sedang Baca' : 'Giliran Anda: Menunggu';
   const sync = state.pageSync === false ? 'Sync Off' : 'Sync On';
   const mode = state.mode === 'hafazan' ? 'Hafazan' : 'Bacaan';
-  const stage = state.stageView === 'photo' && state.sharedPhotoUrl ? 'Foto' : 'Mushaf';
+  const stage = state.stageView === 'photo' && photos.length ? `Foto ${photos.length}/10` : 'Mushaf';
   statusEl.textContent = `Status: Berlangsung · ${turn} · ${mode} · ${sync} · Paparan: ${stage} · Guru menyemak: ${active}`;
 
   applyStageView(state);
