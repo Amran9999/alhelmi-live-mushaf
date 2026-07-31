@@ -67,7 +67,7 @@ const mushafQs = new URLSearchParams({
   embed: '1',
   viewer: '1',
   name: teacherName,
-  cb: 'classroom-21',
+  cb: 'classroom-22',
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -444,6 +444,24 @@ function bindDock() {
     patch({ teacherZoom: clampZoom((roomState.teacherZoom || 100) - 10) }),
   );
 
+  document.querySelectorAll('.dock-anno [data-anno], .dock-anno [data-anno-action]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const action = btn.getAttribute('data-anno-action');
+      const tool = btn.getAttribute('data-anno');
+      postToMushaf(
+        action === 'clear'
+          ? { type: 'annotation-clear' }
+          : { type: 'annotation-tool', tool },
+      );
+      document.querySelectorAll('.dock-anno [data-anno]').forEach((b) => {
+        b.classList.toggle('active', Boolean(tool) && b.getAttribute('data-anno') === tool && tool !== 'off');
+      });
+      if (tool === 'off' || action === 'clear') {
+        document.querySelectorAll('.dock-anno [data-anno]').forEach((b) => b.classList.remove('active'));
+      }
+    });
+  });
+
   els.dockGo.addEventListener('click', goDock);
   els.dockSearch.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -559,18 +577,22 @@ socket.on('share_photo_error', (payload) => {
   }
 });
 
+function postToMushaf(payload) {
+  const frame = els.mushafFrame;
+  if (!frame?.contentWindow) return;
+  frame.contentWindow.postMessage(
+    { source: 'alhelmi-classroom', ...payload },
+    window.location.origin,
+  );
+}
+
 /* Keyboard skrol → iframe mushaf (fokus mungkin di shell, bukan iframe) */
 document.addEventListener('keydown', (event) => {
   if (event.target.closest('input, textarea, select')) return;
   const scrollKeys = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' '];
   if (!scrollKeys.includes(event.key)) return;
-  const frame = els.mushafFrame;
-  if (!frame?.contentWindow) return;
   event.preventDefault();
-  frame.contentWindow.postMessage(
-    { source: 'alhelmi-classroom', type: 'mushaf-scroll', key: event.key },
-    window.location.origin,
-  );
+  postToMushaf({ type: 'mushaf-scroll', key: event.key });
 });
 
 els.btnEndTurn.addEventListener('click', () => socket.emit('fifo_action', { type: 'end' }));

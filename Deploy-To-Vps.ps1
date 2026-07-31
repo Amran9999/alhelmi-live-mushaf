@@ -49,7 +49,7 @@ foreach ($f in $files) {
 $publicFiles = @(
   "classroom.html", "classroom.css", "classroom.js",
   "student.html", "student.js", "media-av.js",
-  "index.html", "styles.css", "app.js"
+  "index.html", "styles.css", "app.js", "annotation-layer.js"
 )
 foreach ($f in $publicFiles) {
   $p = Join-Path $Root "public\$f"

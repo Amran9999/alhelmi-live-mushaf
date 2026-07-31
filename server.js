@@ -118,9 +118,14 @@ const DEFAULT_STATE = {
 };
 
 const rooms = new Map();
+/** Anotasi lukisan per bilik: roomId -> { [page]: Stroke[] } (asing daripada state supaya `state` kekal ringan). */
+const roomAnnotations = new Map();
 const svgCache = new Map();
 const UPLOADS_DIR = join(__dirname, 'uploads');
 const MAX_SHARE_BYTES = 6 * 1024 * 1024;
+const MAX_ANNOTATION_STROKES_PER_PAGE = 250;
+const MAX_ANNOTATION_POINTS = 400;
+const ANNOTATION_COLORS = new Set(['#e11d48', '#16a34a']);
 const SHARE_MIME = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
@@ -166,6 +171,61 @@ function getRoom(roomId) {
     });
   }
   return rooms.get(roomId);
+}
+
+function getRoomAnnotations(roomId) {
+  if (!roomAnnotations.has(roomId)) {
+    roomAnnotations.set(roomId, Object.create(null));
+  }
+  return roomAnnotations.get(roomId);
+}
+
+function clampAnnotationPage(page) {
+  const n = Number(page);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(604, Math.max(1, Math.round(n)));
+}
+
+function sanitizeAnnotationPoint(pt) {
+  if (!pt || typeof pt !== 'object') return null;
+  const x = Number(pt.x);
+  const y = Number(pt.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < -0.05 || x > 1.05 || y < -0.05 || y > 1.05) return null;
+  return {
+    x: Math.min(1, Math.max(0, x)),
+    y: Math.min(1, Math.max(0, y)),
+  };
+}
+
+function sanitizeAnnotationStroke(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const page = clampAnnotationPage(payload.page);
+  const tool = payload.tool === 'eraser' ? 'eraser' : 'pen';
+  const color = tool === 'eraser'
+    ? '#000000'
+    : ANNOTATION_COLORS.has(String(payload.color || '').toLowerCase())
+      ? String(payload.color).toLowerCase()
+      : '#e11d48';
+  const width = Math.min(0.08, Math.max(0.001, Number(payload.width) || 0.008));
+  const rawPoints = Array.isArray(payload.points) ? payload.points : [];
+  const points = [];
+  for (let i = 0; i < rawPoints.length && points.length < MAX_ANNOTATION_POINTS; i += 1) {
+    const p = sanitizeAnnotationPoint(rawPoints[i]);
+    if (p) points.push(p);
+  }
+  if (points.length < 1) return null;
+  const id = String(payload.id || '').slice(0, 64) || `s-${Date.now()}`;
+  return { id, page, tool, color, width, points };
+}
+
+function emitAnnotationsSync(roomId, page, targetSocket = null) {
+  const bag = getRoomAnnotations(roomId);
+  const key = String(clampAnnotationPage(page));
+  const strokes = Array.isArray(bag[key]) ? bag[key] : [];
+  const payload = { page: Number(key), strokes };
+  if (targetSocket) targetSocket.emit('annotations_sync', payload);
+  else io.to(roomId).emit('annotations_sync', payload);
 }
 
 function publishRoom(roomId, next) {
@@ -491,6 +551,7 @@ io.on('connection', (socket) => {
       name: auth.name,
       localDev: LOCAL_DEV,
     });
+    emitAnnotationsSync(currentRoom, state.page || 1, socket);
 
     const peers = listRoomPeers(currentRoom).filter((p) => p.socketId !== socket.id);
     socket.emit('av-roster', peers);
@@ -533,7 +594,49 @@ io.on('connection', (socket) => {
     } else if (patch.stageView === 'mushaf') {
       next.stageView = 'mushaf';
     }
+    // Anotasi tidak melalui teacher_update — guna annotation_* sahaja.
+    delete next.annotationsByPage;
+    delete next.annotationStrokes;
     publishRoom(currentRoom, next);
+    if (patch.page != null && Number(patch.page) !== Number(state.page)) {
+      emitAnnotationsSync(currentRoom, next.page);
+    }
+  });
+
+  /** Guru tambah satu stroke anotasi (pen/eraser) pada halaman mushaf. */
+  socket.on('annotation_add', (payload) => {
+    if (role !== 'teacher' || !currentRoom) return;
+    const stroke = sanitizeAnnotationStroke(payload);
+    if (!stroke) return;
+    const bag = getRoomAnnotations(currentRoom);
+    const key = String(stroke.page);
+    const list = Array.isArray(bag[key]) ? bag[key].slice() : [];
+    if (list.some((s) => s.id === stroke.id)) return;
+    list.push(stroke);
+    if (list.length > MAX_ANNOTATION_STROKES_PER_PAGE) {
+      bag[key] = list.slice(list.length - MAX_ANNOTATION_STROKES_PER_PAGE);
+    } else {
+      bag[key] = list;
+    }
+    io.to(currentRoom).emit('annotation_add', stroke);
+  });
+
+  /** Guru padam semua anotasi pada satu halaman (atau halaman semasa). */
+  socket.on('annotation_clear', (payload = {}) => {
+    if (role !== 'teacher' || !currentRoom) return;
+    const state = getRoom(currentRoom);
+    const page = clampAnnotationPage(payload.page ?? state.page ?? 1);
+    const bag = getRoomAnnotations(currentRoom);
+    bag[String(page)] = [];
+    io.to(currentRoom).emit('annotation_clear', { page });
+  });
+
+  /** Pelajar/guru minta stroke untuk halaman (contoh: pelajar baca sendiri). */
+  socket.on('annotation_request', (payload = {}) => {
+    if (!currentRoom) return;
+    const state = getRoom(currentRoom);
+    const page = clampAnnotationPage(payload.page ?? state.page ?? 1);
+    emitAnnotationsSync(currentRoom, page, socket);
   });
 
   /** Guru muat naik JPG/PNG (base64) untuk dikongsi ke bilik. */

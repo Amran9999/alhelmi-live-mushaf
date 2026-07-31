@@ -1159,6 +1159,113 @@ body:not(.menu-collapsed) .menu-toggle-icon-show {
   min-height: 200px;
 }
 
+.annotation-layer {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.annotation-layer.is-drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+body.annotation-drawing .mushaf-host [data-ayah],
+body.annotation-drawing .mushaf-host text {
+  cursor: crosshair;
+}
+
+.annotation-toolbar,
+.role-teacher .annotation-toolbar.teacher-only {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  background: rgba(18, 24, 30, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+body.classroom-mode-baca .annotation-toolbar,
+body.classroom-fs.classroom-mode-baca .annotation-toolbar {
+  top: 0;
+}
+
+.annotation-toolbar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c5d0db;
+  padding: 0 0.35rem 0 0.45rem;
+}
+
+.annotation-tool {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: #2a323c;
+  color: #eef2f6;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+}
+
+.annotation-tool:hover {
+  background: #36404c;
+}
+
+.annotation-tool.active {
+  outline: 2px solid #f8fafc;
+  outline-offset: 1px;
+}
+
+.annotation-tool-red {
+  color: #fb7185;
+}
+
+.annotation-tool-red.active {
+  background: #9f1239;
+  color: #fff;
+}
+
+.annotation-tool-green {
+  color: #4ade80;
+}
+
+.annotation-tool-green.active {
+  background: #15803d;
+  color: #fff;
+}
+
+.annotation-tool-clear {
+  width: auto;
+  padding: 0 0.65rem;
+  font-size: 0.7rem;
+  border-radius: 999px;
+}
+
+.annotation-tool-off.active {
+  background: #475569;
+}
+
+.role-student .annotation-toolbar {
+  display: none !important;
+}
+
 .mushaf-host.is-loading:not(:empty) {
   opacity: 0.72;
 }

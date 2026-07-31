@@ -1,3 +1,5 @@
+import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-15';
+
 const params = new URLSearchParams(window.location.search);
 const accessToken = (params.get('token') || '').trim();
 /** Intent bilik dari query — tanpa JWT jangan load shell kelas (OWASP A01), kecuali local=1. */
@@ -92,6 +94,14 @@ const modeLabels = {
   hafazan: 'Hafazan',
 };
 
+const annotationLayer = createAnnotationLayer({
+  socket,
+  getRole: () => role,
+  getPage: () => getEffectivePage(),
+  mushafHost: els.mushafHost,
+  viewerShell: els.viewerShell,
+});
+
 init();
 
 /** UI sahaja bila ?room= tanpa token — tiada toolbar/sync/socket join. */
@@ -154,6 +164,8 @@ function applyAuthorizedIdentity({ roomId: nextRoom, role: nextRole, userId }) {
     bindAyahClicks();
     uiBound = true;
   }
+  annotationLayer.start();
+  annotationLayer.refresh();
 }
 
 async function init() {
@@ -849,6 +861,7 @@ function bindAyahClicks() {
   ayahClicksBound = true;
 
   els.mushafHost.addEventListener('click', (event) => {
+    if (document.body.classList.contains('annotation-drawing')) return;
     const node = event.target.closest('[data-ayah]');
     if (!node) return;
 
@@ -981,6 +994,7 @@ function mountPageSvg(svgText, page) {
   applyZoomTransform();
   window.requestAnimationFrame(() => applyZoomTransform());
   applyAyahHighlights();
+  annotationLayer.onPageRendered();
   prefetchAroundPage(page);
 }
 
@@ -1137,6 +1151,8 @@ function applyRoomState(state) {
   applyZoomTransform();
   applyAyahHighlights();
   updateLocationLabel(displayPage, svg);
+  if (pageChanged) annotationLayer.onRoomPageChanged();
+  else annotationLayer.refresh();
 }
 
 function applyZoomTransform() {
@@ -1155,6 +1171,7 @@ function applyZoomTransform() {
   document.documentElement.style.setProperty('--mushaf-width', `${displayWidth + 80}px`);
   updateZoomLabels();
   applyAyahHighlights();
+  window.requestAnimationFrame(() => annotationLayer.refresh());
 }
 
 /** ArrowUp/Down + PageUp/Down skrol mushaf (bukan tukar halaman). */

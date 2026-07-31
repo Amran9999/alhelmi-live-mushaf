@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Fraunces:opsz,wght@9..144,560;9..144,650&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/classroom.css?v=27" />
+  <link rel="stylesheet" href="/classroom.css?v=28" />
 </head>
 <body class="role-teacher">
   <div class="room-shell">
@@ -127,6 +127,14 @@
           <span id="dock-zoom-label">100%</span>
           <button type="button" class="dock-icon" id="dock-zoom-in" aria-label="Besarkan">+</button>
         </div>
+
+        <div class="dock-seg dock-anno" role="group" aria-label="Anotasi">
+          <button type="button" class="dock-seg-btn dock-anno-red" id="dock-anno-red" data-anno="pen-red" title="Pen merah">Merah</button>
+          <button type="button" class="dock-seg-btn dock-anno-green" id="dock-anno-green" data-anno="pen-green" title="Pen hijau">Hijau</button>
+          <button type="button" class="dock-seg-btn" id="dock-anno-eraser" data-anno="eraser" title="Pemadam">Padam</button>
+          <button type="button" class="dock-seg-btn" id="dock-anno-clear" data-anno-action="clear" title="Kosongkan anotasi halaman">Kosong</button>
+          <button type="button" class="dock-seg-btn" id="dock-anno-off" data-anno="off" title="Tamat lukisan">Tangan</button>
+        </div>
       </footer>
     </section>
 
@@ -169,6 +177,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/classroom.js?v=27"></script>
+  <script type="module" src="/classroom.js?v=28"></script>
 </body>
 </html>
