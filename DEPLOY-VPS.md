@@ -49,6 +49,7 @@ Isi:
 PORT=3090
 NODE_ENV=production
 MUSHAF_JWT_SECRET=secret-sebenar-dari-portal
+MUSHAF_MEDIA_URL_TTL_SEC=1800
 ```
 
 Simpan: `Ctrl+O` Enter, keluar: `Ctrl+X`
@@ -57,12 +58,27 @@ Simpan: `Ctrl+O` Enter, keluar: `Ctrl+X`
 
 ## 4) Install & jalankan
 
+Sebelum mengganti kod, backup arkib nota yang tidak berada dalam Git:
+
+```bash
+cd /opt/mushaf
+mkdir -p /opt/backups
+tar -czf "/opt/backups/mushaf-notes-$(date +%Y%m%d%H%M%S).tgz" uploads/notes data/student-notes
+```
+
 ```bash
 cd /opt/mushaf
 npm install --omit=dev
 ```
 
-Dengan PM2:
+Production semasa menggunakan systemd:
+
+```bash
+sudo systemctl restart alhelmi-mushaf
+sudo systemctl is-active alhelmi-mushaf
+```
+
+Jika pemasangan lama menggunakan PM2:
 
 ```bash
 pm2 describe mushaf >/dev/null 2>&1 && pm2 restart mushaf --update-env || pm2 start server.js --name mushaf
@@ -83,9 +99,12 @@ nohup node server.js >/var/log/mushaf.log 2>&1 &
 
 ```bash
 curl -s http://127.0.0.1:3090/health
+curl -sS -o /dev/null -w '%{http_code}\n' https://quran.alhelmi.com/uploads/notes/test.jpg
 ```
 
 Mesti ada: `"ui":"classroom-dual-panel"`
+
+Ujian kedua mesti memulangkan `404`; fail nota production hanya boleh dibuka melalui URL `/media/{token}` yang sah.
 
 Public: https://quran.alhelmi.com/health
 

@@ -1,34 +1,28 @@
 # Deploy ke VPS (`quran.alhelmi.com`)
 
+Dokumen operasi utama: [DEPLOY-VPS.md](./DEPLOY-VPS.md). Fail ini ialah rujukan ringkas.
+
 ## Penting dulu
 
-Sekarang config tunnel biasa:
-
-`quran.alhelmi.com` → `http://127.0.0.1:3090` **di PC anda**
+Production semasa berjalan di VPS `/opt/mushaf` sebagai service `alhelmi-mushaf`. Tunnel PC hanya untuk pembangunan sementara dan tidak boleh mengambil alih hostname production.
 
 Jadi ada 2 senario:
 
 | Senario | Apa buat |
 |---------|----------|
-| **A. Tunnel lokal** (sekarang) | Jalankan mushaf di PC + `cloudflared tunnel run` — **bukan** upload VPS |
-| **B. App di VPS** | Upload kod dengan skrip di bawah + Nginx/proxy ke port 3090 di VPS |
+| **A. Dev lokal** | Jalankan mushaf di PC pada port 3090; jangan arahkan hostname production ke PC |
+| **B. Production VPS** | Upload kod dengan skrip di bawah + Nginx/proxy ke port 3090 |
 
 ---
 
-## A — “Deploy” via tunnel (PC)
+## A — Dev lokal
 
 ```powershell
 cd D:\mushaf
 npm.cmd run dev
 ```
 
-Terminal lain:
-
-```powershell
-cloudflared tunnel run alhelmi-learn
-```
-
-Uji: https://quran.alhelmi.com/health
+Uji: `http://localhost:3090/health`
 
 ---
 
@@ -61,11 +55,13 @@ Isi:
 PORT=3090
 NODE_ENV=production
 MUSHAF_JWT_SECRET=secret-sebenar-dari-portal
+MUSHAF_MEDIA_URL_TTL_SEC=1800
 ```
 
 ```bash
-pm2 restart mushaf
-# atau: node server.js
+mkdir -p /opt/backups
+tar -czf "/opt/backups/mushaf-notes-$(date +%Y%m%d%H%M%S).tgz" uploads/notes data/student-notes
+systemctl restart alhelmi-mushaf
 curl http://127.0.0.1:3090/health
 ```
 
@@ -80,3 +76,8 @@ https://quran.alhelmi.com/health
 ```
 
 Harus ada `"ui":"classroom-dual-panel"`.
+
+Semak juga:
+- direct `/uploads/...` memulangkan `404`;
+- screenshot guru menerima ACK simpanan;
+- nota pelajar menggunakan URL `/media/{token}` dan masih boleh dimuat turun.

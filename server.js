@@ -1,9 +1,10 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { basename, dirname, join } from 'path';
+import { basename, dirname, join, resolve, sep } from 'path';
 import {
   assertMushafClaims,
   resolveMushafJwtSecret,
@@ -122,7 +123,7 @@ const DEFAULT_STATE = {
   activeReaderId: null,
   activeReaderName: '',
   muteAllExceptActive: false,
-  fifo: DEMO_FIFO.map((s) => ({ ...s })),
+  fifo: [],
 };
 
 const rooms = new Map();
@@ -130,11 +131,16 @@ const rooms = new Map();
 const roomAnnotations = new Map();
 const svgCache = new Map();
 const UPLOADS_DIR = join(__dirname, 'uploads');
+const MEDIA_URL_TTL_SEC = Math.min(
+  3600,
+  Math.max(60, Number(process.env.MUSHAF_MEDIA_URL_TTL_SEC) || 30 * 60),
+);
 const MAX_SHARE_BYTES = 6 * 1024 * 1024;
 const MAX_SHARED_PHOTOS = 10;
 const MAX_ANNOTATION_STROKES_PER_PAGE = 250;
 const MAX_ANNOTATION_POINTS = 400;
-const ANNOTATION_COLORS = new Set(['#e11d48', '#16a34a']);
+const MAX_ANNOTATION_TEXT = 80;
+const ANNOTATION_COLORS = new Set(['#e11d48', '#16a34a', '#0f172a']);
 const SHARE_MIME = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
@@ -152,6 +158,80 @@ function safeRoomSlug(roomId) {
     .trim()
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .slice(0, 64);
+}
+
+function timingSafeEqualText(a, b) {
+  const aa = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+}
+
+function signMediaUrl(urlPath) {
+  if (!JWT_SECRET || !String(urlPath).startsWith('/uploads/')) return urlPath;
+  const payload = Buffer.from(
+    JSON.stringify({
+      p: String(urlPath),
+      exp: Math.floor(Date.now() / 1000) + MEDIA_URL_TTL_SEC,
+    }),
+  ).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`mushaf-media.${payload}`)
+    .digest('base64url');
+  return `/media/${payload}.${signature}`;
+}
+
+function resolveSignedMedia(token) {
+  if (!JWT_SECRET || !token) return null;
+  const [payload, signature, ...rest] = String(token).split('.');
+  if (!payload || !signature || rest.length) return null;
+  const expected = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`mushaf-media.${payload}`)
+    .digest('base64url');
+  if (!timingSafeEqualText(signature, expected)) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!Number.isInteger(claims.exp) || Math.floor(Date.now() / 1000) >= claims.exp) {
+      return null;
+    }
+    const urlPath = String(claims.p || '');
+    if (!urlPath.startsWith('/uploads/') || urlPath.includes('\0')) return null;
+    const fullPath = resolve(__dirname, `.${urlPath}`);
+    const uploadsRoot = resolve(UPLOADS_DIR);
+    if (fullPath !== uploadsRoot && !fullPath.startsWith(`${uploadsRoot}${sep}`)) return null;
+    return fullPath;
+  } catch {
+    return null;
+  }
+}
+
+function exposeRoomState(state) {
+  const sharedPhotos = Array.isArray(state?.sharedPhotos)
+    ? state.sharedPhotos.map((photo) => ({
+        ...photo,
+        url: signMediaUrl(photo.url),
+      }))
+    : [];
+  return {
+    ...state,
+    sharedPhotos,
+    sharedPhotoUrl: signMediaUrl(state?.sharedPhotoUrl),
+  };
+}
+
+function exposeStudentNotes(userId) {
+  const payload = listStudentNotesPayload(userId);
+  return {
+    ...payload,
+    sessions: payload.sessions.map((session) => ({
+      ...session,
+      photos: session.photos.map((photo) => ({
+        ...photo,
+        url: signMediaUrl(photo.url),
+      })),
+    })),
+  };
 }
 
 function removeSharedPhotoFile(urlPath) {
@@ -218,7 +298,8 @@ function getRoom(roomId) {
   if (!rooms.has(roomId)) {
     rooms.set(roomId, {
       ...DEFAULT_STATE,
-      fifo: DEMO_FIFO.map((s) => ({ ...s })),
+      // Tiada nama demo — pelajar masuk FIFO hanya bila socket join (online).
+      fifo: [],
       updatedAt: Date.now(),
     });
   }
@@ -253,7 +334,26 @@ function sanitizeAnnotationPoint(pt) {
 function sanitizeAnnotationStroke(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const page = clampAnnotationPage(payload.page);
-  const tool = payload.tool === 'eraser' ? 'eraser' : 'pen';
+  const rawTool = String(payload.tool || 'pen');
+  const tool = rawTool === 'eraser' ? 'eraser' : rawTool === 'text' ? 'text' : 'pen';
+
+  if (tool === 'text') {
+    const text = String(payload.text || '')
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .trim()
+      .slice(0, MAX_ANNOTATION_TEXT);
+    if (!text) return null;
+    const color = ANNOTATION_COLORS.has(String(payload.color || '').toLowerCase())
+      ? String(payload.color).toLowerCase()
+      : '#0f172a';
+    const width = Math.min(0.08, Math.max(0.012, Number(payload.width) || 0.032));
+    const rawPoints = Array.isArray(payload.points) ? payload.points : [];
+    const p = sanitizeAnnotationPoint(rawPoints[0]);
+    if (!p) return null;
+    const id = String(payload.id || '').slice(0, 64) || `t-${Date.now()}`;
+    return { id, page, tool: 'text', color, width, points: [p], text };
+  }
+
   const color = tool === 'eraser'
     ? '#000000'
     : ANNOTATION_COLORS.has(String(payload.color || '').toLowerCase())
@@ -282,7 +382,7 @@ function emitAnnotationsSync(roomId, page, targetSocket = null) {
 
 function publishRoom(roomId, next) {
   rooms.set(roomId, next);
-  io.to(roomId).emit('state', next);
+  io.to(roomId).emit('state', exposeRoomState(next));
   return next;
 }
 
@@ -304,7 +404,7 @@ function securityHeaders(_req, res, next) {
       "script-src 'self'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
-      "img-src 'self' data: blob:",
+      "img-src 'self' data: blob: https://learn.alhelmi.com https://app.alhelmi.com",
       "media-src 'self' blob:",
       "connect-src 'self' ws: wss:",
       "frame-src 'self'",
@@ -389,10 +489,33 @@ function applyFifoAction(state, action) {
       activeReaderName = target.name;
     }
   } else if (action.type === 'end') {
-    const active = fifo.find((s) => s.status === 'active') || fifo.find((s) => s.id === id);
+    let active =
+      fifo.find((s) => s.status === 'active') ||
+      (id ? fifo.find((s) => String(s.id) === id) : null);
+    if (!active && state.activeReaderId) {
+      active = fifo.find((s) => String(s.id) === String(state.activeReaderId)) || null;
+    }
+    if (!active && state.activeReaderName) {
+      const want = String(state.activeReaderName).trim().toLowerCase();
+      active =
+        fifo.find(
+          (s) =>
+            s.status !== 'done' && String(s.name || '').trim().toLowerCase() === want,
+        ) || null;
+    }
     if (active) active.status = 'done';
     activeReaderId = null;
     activeReaderName = '';
+    // Auto-FIFO: pelajar waiting seterusnya masuk aktif.
+    const nextWaiting = fifo
+      .filter((s) => s.status === 'waiting')
+      .sort((a, b) => (a.round || 1) - (b.round || 1));
+    const next = nextWaiting[0];
+    if (next) {
+      next.status = 'active';
+      activeReaderId = next.id;
+      activeReaderName = next.name;
+    }
   } else if (action.type === 'skip' && id) {
     const target = fifo.find((s) => s.id === id);
     if (target && target.status === 'waiting') {
@@ -412,7 +535,7 @@ function applyFifoAction(state, action) {
   } else if (action.type === 'reset') {
     return {
       ...state,
-      fifo: DEMO_FIFO.map((s) => ({ ...s })),
+      fifo: [],
       activeReaderId: null,
       activeReaderName: '',
       muteAllExceptActive: false,
@@ -477,18 +600,31 @@ app.get('/health', (_req, res) => {
   });
 });
 
+app.get('/media/:token', (req, res) => {
+  const fullPath = resolveSignedMedia(req.params.token);
+  if (!fullPath || !existsSync(fullPath)) {
+    res.status(404).end();
+    return;
+  }
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.sendFile(fullPath);
+});
+
 app.use(express.static(join(__dirname, 'public'), { index: false }));
 app.use('/data', express.static(join(__dirname, 'data')));
 app.use(
   '/uploads',
-  express.static(UPLOADS_DIR, {
-    fallthrough: false,
-    maxAge: IS_PROD ? '1h' : 0,
-    setHeaders(res) {
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Cache-Control', IS_PROD ? 'public, max-age=3600' : 'no-store');
-    },
-  }),
+  IS_PROD
+    ? (_req, res) => res.status(404).end()
+    : express.static(UPLOADS_DIR, {
+        fallthrough: false,
+        maxAge: 0,
+        setHeaders(res) {
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Cache-Control', 'no-store');
+        },
+      }),
 );
 
 app.post('/api/room/:roomId/active-reader', express.json({ limit: '32kb' }), (req, res) => {
@@ -600,7 +736,7 @@ io.on('connection', (socket) => {
   }
 
   function emitStudentNotes(userId) {
-    const payload = listStudentNotesPayload(userId);
+    const payload = exposeStudentNotes(userId);
     for (const [, sock] of io.sockets.sockets) {
       if (sock.data?.userId === String(userId) && sock.data?.role === 'student') {
         sock.emit('student_notes', payload);
@@ -650,8 +786,9 @@ io.on('connection', (socket) => {
     if (state.activeReaderId) targets.add(String(state.activeReaderId));
     // Juga semua pelajar yang sedang dalam bilik.
     for (const id of listStudentUserIdsInRoom(roomId)) targets.add(id);
-    if (!targets.size) return;
+    if (!targets.size) return { archivedCount: 0, targetCount: 0 };
 
+    let archivedCount = 0;
     for (const userId of targets) {
       const store = archivePhotoForStudent({
         userId,
@@ -662,8 +799,12 @@ io.on('connection', (socket) => {
         name: entry.name,
         photoId: entry.id,
       });
-      if (store) emitStudentNotes(userId);
+      if (store) {
+        archivedCount += 1;
+        emitStudentNotes(userId);
+      }
     }
+    return { archivedCount, targetCount: targets.size };
   }
 
   socket.on('join', (payload = {}) => {
@@ -685,10 +826,11 @@ io.on('connection', (socket) => {
     socket.data.role = role;
     socket.data.courseId = auth.courseId || null;
     socket.data.sessionId = auth.sessionId || null;
+    socket.data.queueOwner = payload.queueOwner === 'portal' ? 'portal' : 'mushaf';
     socket.join(currentRoom);
 
     const state = getRoom(currentRoom);
-    socket.emit('state', state);
+    socket.emit('state', exposeRoomState(state));
     socket.emit('joined', {
       roomId: currentRoom,
       role,
@@ -701,14 +843,14 @@ io.on('connection', (socket) => {
     });
     emitAnnotationsSync(currentRoom, state.page || 1, socket);
     if (role === 'student') {
-      socket.emit('student_notes', listStudentNotesPayload(auth.userId));
+      socket.emit('student_notes', exposeStudentNotes(auth.userId));
     }
 
     const peers = listRoomPeers(currentRoom).filter((p) => p.socketId !== socket.id);
     socket.emit('av-roster', peers);
     socket.to(currentRoom).emit('av-peer-joined', peerInfo(socket));
 
-    if (role === 'student') {
+    if (role === 'student' && socket.data.queueOwner !== 'portal') {
       const state = getRoom(currentRoom);
       const fifo = (state.fifo || []).map((s) => ({ ...s }));
       const known =
@@ -738,9 +880,14 @@ io.on('connection', (socket) => {
       ...safePatch
     } = patch;
     const next = { ...state, ...safePatch, updatedAt: Date.now() };
-    // URL/galeri foto hanya melalui share_photo / clear_photo / select_photo
+    // URL/galeri foto hanya melalui share_photo / clear_photo / select_photo.
+    // Ambil META foto sahaja — jangan Object.assign(...state) semula (itu batalkan page/zoom/mode).
     const photos = normalizeSharedPhotos(state);
-    Object.assign(next, withActiveSharedPhoto(state, photos));
+    const photoMeta = withActiveSharedPhoto(state, photos);
+    next.sharedPhotos = photoMeta.sharedPhotos;
+    next.sharedPhotoId = photoMeta.sharedPhotoId;
+    next.sharedPhotoUrl = photoMeta.sharedPhotoUrl;
+    next.sharedPhotoName = photoMeta.sharedPhotoName;
     if (patch.mode === 'bacaan') next.hidden = false;
     if (patch.stageView === 'photo') {
       next.stageView = next.sharedPhotoUrl ? 'photo' : 'mushaf';
@@ -794,27 +941,32 @@ io.on('connection', (socket) => {
 
   /** Guru muat naik JPG/PNG (base64) untuk dikongsi ke bilik. */
   socket.on('share_photo', (payload = {}) => {
-    if (role !== 'teacher' || !currentRoom) return;
+    const requestId = String(payload.requestId || '').slice(0, 80) || null;
+    const fail = (error) => socket.emit('share_photo_error', { error, requestId });
+    if (role !== 'teacher' || !currentRoom) {
+      fail(role !== 'teacher' ? 'Hanya guru boleh kongsi nota' : 'Belum join bilik mushaf');
+      return;
+    }
     const mime = String(payload.mime || '').toLowerCase().trim();
     const ext = SHARE_MIME[mime];
     if (!ext) {
-      socket.emit('share_photo_error', { error: 'Hanya JPG atau PNG dibenarkan' });
+      fail('Hanya JPG atau PNG dibenarkan');
       return;
     }
     const raw = String(payload.data || '').replace(/^data:image\/\w+;base64,/, '');
     if (!raw) {
-      socket.emit('share_photo_error', { error: 'Fail kosong' });
+      fail('Fail kosong');
       return;
     }
     let buf;
     try {
       buf = Buffer.from(raw, 'base64');
     } catch {
-      socket.emit('share_photo_error', { error: 'Fail rosak' });
+      fail('Fail rosak');
       return;
     }
     if (!buf.length || buf.length > MAX_SHARE_BYTES) {
-      socket.emit('share_photo_error', { error: 'Saiz maksimum 6MB' });
+      fail('Saiz maksimum 6MB');
       return;
     }
     // Magic bytes asas
@@ -822,7 +974,7 @@ io.on('connection', (socket) => {
     const isPng =
       buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
     if ((ext === 'jpg' && !isJpeg) || (ext === 'png' && !isPng)) {
-      socket.emit('share_photo_error', { error: 'Format fail tidak sah' });
+      fail('Format fail tidak sah');
       return;
     }
 
@@ -833,7 +985,7 @@ io.on('connection', (socket) => {
       writeFileSync(fullPath, buf);
     } catch (err) {
       console.error('share_photo write', err);
-      socket.emit('share_photo_error', { error: 'Gagal simpan fail' });
+      fail('Gagal simpan fail');
       return;
     }
 
@@ -862,16 +1014,31 @@ io.on('connection', (socket) => {
       updatedAt: Date.now(),
     });
     // Arkib per pelajar (kekal 3 sesi) — fail disalin, tidak hilang bila galeri bilik dikosongkan.
+    let archiveResult = { archivedCount: 0, targetCount: 0 };
     try {
-      archiveSharedPhotoToStudents(currentRoom, entry, published);
+      archiveResult = archiveSharedPhotoToStudents(currentRoom, entry, published);
     } catch (err) {
       console.error('archive student notes', err);
+      fail('Foto dikongsi tetapi arkib pelajar gagal disimpan');
+      return;
     }
+    socket.emit('share_photo_result', {
+      ok: archiveResult.archivedCount === archiveResult.targetCount,
+      requestId,
+      photoId: entry.id,
+      archivedCount: archiveResult.archivedCount,
+      targetCount: archiveResult.targetCount,
+    });
   });
 
   socket.on('notes_list', () => {
     if (role !== 'student' || !socket.data.userId) return;
-    socket.emit('student_notes', listStudentNotesPayload(socket.data.userId));
+    socket.emit('student_notes', exposeStudentNotes(socket.data.userId));
+  });
+
+  socket.on('state_refresh', () => {
+    if (!currentRoom) return;
+    socket.emit('state', exposeRoomState(getRoom(currentRoom)));
   });
 
   /** Guru pilih foto aktif dalam galeri (untuk paparan Foto). */
@@ -926,10 +1093,25 @@ io.on('connection', (socket) => {
   });
 
   socket.on('fifo_action', (action = {}) => {
-    if (role !== 'teacher' || !currentRoom) return;
+    if (role !== 'teacher' || !currentRoom) {
+      socket.emit('fifo_error', {
+        error:
+          role !== 'teacher'
+            ? 'Hanya guru boleh urus giliran (token role bukan teacher).'
+            : 'Belum join bilik mushaf.',
+      });
+      return;
+    }
+    if (socket.data.queueOwner === 'portal') {
+      socket.emit('fifo_error', {
+        error: 'Giliran bilik ini dikawal oleh portal Moodle.',
+      });
+      return;
+    }
     const state = getRoom(currentRoom);
     const next = applyFifoAction(state, action);
-    if (action.type === 'mute_all') {
+    // Tamat / Panggil / Mute semua → hanya pembaca aktif boleh mic+cam (mushaf WebRTC).
+    if (action.type === 'mute_all' || action.type === 'end' || action.type === 'call') {
       next.muteAllExceptActive = true;
       next.updatedAt = Date.now();
     }
@@ -967,12 +1149,36 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (!currentRoom) return;
-    socket.to(currentRoom).emit('av-peer-left', {
+    const roomId = currentRoom;
+    const leftUserId = socket.data.userId;
+    socket.to(roomId).emit('av-peer-left', {
       socketId: socket.id,
-      userId: socket.data.userId,
+      userId: leftUserId,
     });
     if (role === 'teacher') {
-      socket.to(currentRoom).emit('teacher_online', false);
+      socket.to(roomId).emit('teacher_online', false);
+    }
+    // Pelajar logout / tutup tab → keluar FIFO bilik (masuk semula bila join).
+    if (role === 'student' && leftUserId && socket.data.queueOwner !== 'portal') {
+      const state = getRoom(roomId);
+      const fifo = (state.fifo || []).map((s) => ({ ...s }));
+      const me = fifo.find((s) => String(s.id) === String(leftUserId));
+      if (!me) return;
+      if (me.status === 'waiting') {
+        const nextFifo = fifo.filter((s) => String(s.id) !== String(leftUserId));
+        publishRoom(roomId, { ...state, fifo: nextFifo, updatedAt: Date.now() });
+        return;
+      }
+      if (me.status === 'active') {
+        const ended = applyFifoAction(state, { type: 'end', id: leftUserId });
+        publishRoom(roomId, ended);
+        if (ended.muteAllExceptActive) {
+          io.to(roomId).emit('av-mute-policy', {
+            muteAllExceptActive: true,
+            activeReaderId: ended.activeReaderId || null,
+          });
+        }
+      }
     }
   });
 });

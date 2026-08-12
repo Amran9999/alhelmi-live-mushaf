@@ -1,14 +1,17 @@
 /**
- * Layer anotasi lukisan di atas mushaf (pen merah/hijau + pemadam).
+ * Layer anotasi lukisan di atas mushaf (pen merah/hijau + pemadam + teks).
  * Koordinat normal (0–1) relatif kepada kotak SVG mushaf.
  */
 
 const PEN_RED = '#e11d48';
 const PEN_GREEN = '#16a34a';
+const TEXT_COLOR = '#0f172a';
 const DEFAULT_PEN_WIDTH = 0.0075;
 const ERASER_WIDTH = 0.028;
+const TEXT_SIZE = 0.032;
 const MIN_POINT_DIST = 0.002;
 const SHARE_MAX_BYTES = 5.5 * 1024 * 1024;
+const MAX_TEXT_CHARS = 80;
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -37,7 +40,7 @@ export function createAnnotationLayer({
 }) {
   /** @type {Map<number, object[]>} */
   const strokesByPage = new Map();
-  let tool = 'off'; // off | pen-red | pen-green | eraser
+  let tool = 'off'; // off | pen-red | pen-green | eraser | text
   let canvas = null;
   let ctx = null;
   let drawing = false;
@@ -140,6 +143,35 @@ export function createAnnotationLayer({
 
   function drawStroke(stroke, { preview = false } = {}) {
     if (!ctx || !stroke?.points?.length) return;
+    const w = canvas.getBoundingClientRect().width;
+    const h = canvas.getBoundingClientRect().height;
+
+    if (stroke.tool === 'text') {
+      const label = String(stroke.text || '').trim();
+      if (!label) return;
+      const fontSize = Math.max(11, (stroke.width || TEXT_SIZE) * w);
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = stroke.color || TEXT_COLOR;
+      ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.lineJoin = 'round';
+      // Halo nipis supaya terbaca atas tulisan Quran.
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+      ctx.lineWidth = Math.max(2, fontSize * 0.18);
+      const x = stroke.points[0].x * w;
+      const y = stroke.points[0].y * h;
+      const lines = wrapText(label, Math.max(8, Math.floor(28 * (w / 400))));
+      let yy = y;
+      for (const line of lines) {
+        ctx.strokeText(line, x, yy);
+        ctx.fillText(line, x, yy);
+        yy += fontSize * 1.15;
+      }
+      ctx.restore();
+      return;
+    }
+
     const { color, lineWidth } = strokeStyle(stroke);
     ctx.save();
     if (stroke.tool === 'eraser') {
@@ -154,8 +186,6 @@ export function createAnnotationLayer({
     ctx.lineJoin = 'round';
     ctx.beginPath();
     const pts = stroke.points;
-    const w = canvas.getBoundingClientRect().width;
-    const h = canvas.getBoundingClientRect().height;
     ctx.moveTo(pts[0].x * w, pts[0].y * h);
     for (let i = 1; i < pts.length; i += 1) {
       ctx.lineTo(pts[i].x * w, pts[i].y * h);
@@ -166,8 +196,27 @@ export function createAnnotationLayer({
     ctx.stroke();
     ctx.restore();
     if (preview) {
-      /* no-op marker for readability */
+      /* no-op */
     }
+  }
+
+  function wrapText(text, maxChars) {
+    const words = String(text).split(/\s+/).filter(Boolean);
+    if (!words.length) return [String(text).slice(0, maxChars)];
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (next.length <= maxChars) {
+        line = next;
+      } else {
+        if (line) lines.push(line);
+        line = word.slice(0, maxChars);
+      }
+      if (lines.length >= 4) break;
+    }
+    if (line && lines.length < 4) lines.push(line);
+    return lines.length ? lines : [String(text).slice(0, maxChars)];
   }
 
   function redraw() {
@@ -226,6 +275,10 @@ export function createAnnotationLayer({
 
   function beginStroke(event) {
     if (getRole() !== 'teacher' || tool === 'off') return;
+    if (tool === 'text') {
+      placeTextLabel(event);
+      return;
+    }
     const pt = normFromEvent(event);
     if (!pt) return;
     event.preventDefault();
@@ -240,6 +293,35 @@ export function createAnnotationLayer({
     };
     canvas?.setPointerCapture?.(event.pointerId);
     redraw();
+  }
+
+  function placeTextLabel(event) {
+    if (!teacherCanAnnotate()) return;
+    const pt = normFromEvent(event);
+    if (!pt) return;
+    event.preventDefault();
+    const raw = window.prompt(
+      'Teks pada mushaf (contoh: mad, gunnah, makhraj Ain):',
+      '',
+    );
+    if (raw == null) return;
+    const text = String(raw)
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .trim()
+      .slice(0, MAX_TEXT_CHARS);
+    if (!text) return;
+    const stroke = {
+      id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      page: pageKey(),
+      tool: 'text',
+      color: TEXT_COLOR,
+      width: TEXT_SIZE,
+      points: [pt],
+      text,
+    };
+    getStrokes(stroke.page).push(stroke);
+    redraw();
+    socket.emit('annotation_add', stroke);
   }
 
   function extendStroke(event) {
@@ -313,6 +395,7 @@ export function createAnnotationLayer({
         <span class="annotation-toolbar-label">Anotasi</span>
         <button type="button" class="annotation-tool annotation-tool-red" data-anno-tool="pen-red" title="Pen merah (kesalahan)" aria-label="Pen merah">●</button>
         <button type="button" class="annotation-tool annotation-tool-green" data-anno-tool="pen-green" title="Pen hijau" aria-label="Pen hijau">●</button>
+        <button type="button" class="annotation-tool annotation-tool-text" data-anno-tool="text" title="Tambah teks (klik pada mushaf)" aria-label="Teks">Aa</button>
         <button type="button" class="annotation-tool" data-anno-tool="eraser" title="Pemadam" aria-label="Pemadam">⌫</button>
         <button type="button" class="annotation-tool annotation-tool-clear" data-anno-action="clear" title="Kosongkan lukisan halaman ini" aria-label="Kosongkan lukisan">Kosong</button>
         <button type="button" class="annotation-tool annotation-tool-clear-hl" data-anno-action="clear-highlight" title="Kosongkan highlight ayat" aria-label="Kosongkan highlight">Highlight</button>
@@ -435,39 +518,40 @@ export function createAnnotationLayer({
       const dataUrl = await captureMushafNote();
       const page = pageKey();
       const name = `Nota-halaman-${page}.jpg`;
+      const requestId = `note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       notifyShareStatus(`Menghantar ${name}…`);
       await new Promise((resolve, reject) => {
         const onErr = (payload) => {
+          if (payload?.requestId && payload.requestId !== requestId) return;
           cleanup();
           reject(new Error(payload?.error || 'Gagal hantar nota'));
         };
-        const onState = (state) => {
-          const photos = Array.isArray(state?.sharedPhotos) ? state.sharedPhotos : [];
-          const matched =
-            state?.sharedPhotoName === name ||
-            photos.some((p) => p?.name === name);
-          if (matched) {
-            cleanup();
-            resolve();
+        const onResult = (payload) => {
+          if (payload?.requestId !== requestId) return;
+          cleanup();
+          if (payload?.ok === false) {
+            reject(new Error('Arkib nota pelajar tidak lengkap'));
+            return;
           }
+          resolve();
         };
         const timer = window.setTimeout(() => {
           cleanup();
-          // Anggap berjaya jika tiada error — state mungkin sudah sampai.
-          resolve();
-        }, 4000);
+          reject(new Error('Server tidak mengesahkan simpanan nota'));
+        }, 12000);
         function cleanup() {
           window.clearTimeout(timer);
           socket.off('share_photo_error', onErr);
-          socket.off('state', onState);
+          socket.off('share_photo_result', onResult);
         }
         socket.on('share_photo_error', onErr);
-        socket.on('state', onState);
+        socket.on('share_photo_result', onResult);
         socket.emit('share_photo', {
           mime: 'image/jpeg',
           data: dataUrl,
           name,
           show: true,
+          requestId,
         });
       });
       notifyShareStatus(`Nota halaman ${page} dihantar kepada pelajar`);

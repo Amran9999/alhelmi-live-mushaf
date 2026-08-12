@@ -5,6 +5,7 @@ const roomId = (params.get('room') || 'kelas-a').trim();
 const teacherName = (params.get('name') || 'Ustaz Farid').trim();
 const accessToken = (params.get('token') || '').trim();
 const localDev = params.get('local') === '1' || params.get('dev') === '1' || !accessToken;
+const queueOwner = params.get('queue_owner') === 'portal' ? 'portal' : 'mushaf';
 
 /** Dalam iframe portal — kamera tunggal dikendalikan app (PiP Jitsi boleh seret). */
 function isEmbeddedInPortal() {
@@ -15,10 +16,13 @@ function isEmbeddedInPortal() {
   }
 }
 const embeddedInPortal = isEmbeddedInPortal();
+if (queueOwner === 'portal') {
+  document.body.classList.add('queue-owner-portal');
+}
 
 const els = {
   classTitle: document.getElementById('class-title'),
-  teacherName: document.getElementById('teacher-name'),
+  teacherName: document.getElementById('teacher-name'), // optional — nama tidak dipaparkan di panel
   connPill: document.getElementById('conn-pill'),
   pageSync: document.getElementById('page-sync'),
   pageSyncLabel: document.getElementById('page-sync-label'),
@@ -45,6 +49,8 @@ const els = {
   mushafDock: document.querySelector('.mushaf-dock'),
   btnStageMushaf: document.getElementById('btn-stage-mushaf'),
   btnStagePhoto: document.getElementById('btn-stage-photo'),
+  btnStageMushafTop: document.getElementById('btn-stage-mushaf-top'),
+  btnStagePhotoTop: document.getElementById('btn-stage-photo-top'),
   sharePhotoInput: document.getElementById('share-photo-input'),
   sharePhotoMeta: document.getElementById('share-photo-meta'),
   sharePhotoGallery: document.getElementById('share-photo-gallery'),
@@ -55,12 +61,13 @@ const els = {
 };
 
 els.classTitle.textContent = roomId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-els.teacherName.textContent = teacherName;
+if (els.teacherName) els.teacherName.textContent = teacherName;
 els.roomLabel.textContent = `Bilik: ${roomId}`;
 
 const studentQs = new URLSearchParams({
   room: roomId,
   preview: '1', // guru buka pratonton — bukan akaun pelajar sebenar
+  queue_owner: queueOwner,
 });
 if (accessToken) studentQs.set('token', accessToken);
 else studentQs.set('local', '1');
@@ -74,7 +81,8 @@ const mushafQs = new URLSearchParams({
   embed: '1',
   viewer: '1',
   name: teacherName,
-  cb: 'classroom-29',
+  cb: 'classroom-38',
+  queue_owner: queueOwner,
 });
 if (accessToken) mushafQs.set('token', accessToken);
 else mushafQs.set('local', '1');
@@ -86,6 +94,8 @@ let navData = null;
 let surahCatalog = [];
 let navMode = 'surah'; // surah | juz | page
 let selectedPage = 1;
+/** Nama pembaca aktif sebelumnya — untuk mute Jitsi di portal */
+let lastFifoActiveName = '';
 /** userId → { camOn, micOn, name } — dikemas dari WebRTC */
 const peerMediaByUserId = new Map();
 /** name → { camOn, micOn, userId } — fallback bila FIFO id ≠ socket userId */
@@ -105,7 +115,7 @@ const socketReady = new Promise((resolve) => {
     els.connPill.classList.remove('is-live');
   });
   socket.on('joined', (info) => {
-    if (info?.name) els.teacherName.textContent = info.name;
+    if (info?.name && els.teacherName) els.teacherName.textContent = info.name;
     if (info?.roomId) {
       els.roomLabel.textContent = `Bilik: ${info.roomId}`;
       els.classTitle.textContent = String(info.roomId)
@@ -115,6 +125,11 @@ const socketReady = new Promise((resolve) => {
     resolve();
   });
   socket.on('state', applyState);
+  socket.on('fifo_error', (payload = {}) => {
+    const msg = payload.error || 'Giliran gagal dikemas kini.';
+    if (els.muteHint) els.muteHint.textContent = msg;
+    console.warn('[fifo]', msg);
+  });
   socket.connect();
   socket.emit('join', {
     token: accessToken || undefined,
@@ -123,8 +138,20 @@ const socketReady = new Promise((resolve) => {
     userId: 'teacher-local',
     name: teacherName,
     localDev: localDev || undefined,
+    queueOwner,
   });
 });
+
+const mediaRefreshId = window.setInterval(() => {
+  if (socket.connected) socket.emit('state_refresh');
+}, 20 * 60 * 1000);
+window.addEventListener(
+  'beforeunload',
+  () => {
+    window.clearInterval(mediaRefreshId);
+  },
+  { once: true },
+);
 
 async function boot() {
   navData = await fetch('/data/navigation.json').then((r) => r.json());
@@ -150,7 +177,8 @@ function initTeacherAv() {
   const btnMic = document.getElementById('pip-mic');
   const btnCam = document.getElementById('pip-cam');
   const activeVideo = document.getElementById('active-reader-video');
-  const activeCam = activeVideo?.closest('.active-cam');
+  const activePhoto = document.getElementById('active-reader-photo');
+  const activeCam = activePhoto?.closest('.active-cam') || activeVideo?.closest('.active-cam');
   const activeAvLabel = document.getElementById('active-av-label');
   const pipTeacher = document.getElementById('pip-teacher');
   const pipStudent = document.getElementById('pip-student');
@@ -167,6 +195,44 @@ function initTeacherAv() {
   }
 
   const peerBySocket = new Map(); // socketId -> { userId, name, stream, camOn, micOn }
+
+  const LEARN_PUBLIC = (
+    params.get('learn') ||
+    window.__ALHELMI_LEARN_URL__ ||
+    'https://learn.alhelmi.com'
+  ).replace(/\/$/, '');
+
+  /** Foto profil Moodle (pix) — bukan webcam. */
+  function profilePhotoUrl(userId) {
+    const id = String(userId || '').trim();
+    if (!/^\d+$/.test(id)) return null;
+    return `${LEARN_PUBLIC}/user/pix.php/${id}/f2.jpg`;
+  }
+
+  function setActiveReaderPhoto(userId, displayName) {
+    if (!activePhoto || !activeCam) return;
+    const url = profilePhotoUrl(userId);
+    activeCam.classList.remove('has-video');
+    if (activeVideo) activeVideo.srcObject = null;
+    if (!url) {
+      activePhoto.removeAttribute('src');
+      activePhoto.hidden = true;
+      activeCam.classList.remove('has-photo');
+      return;
+    }
+    activePhoto.hidden = false;
+    activePhoto.alt = displayName || 'Foto pelajar';
+    if (activePhoto.getAttribute('src') !== url) {
+      activePhoto.onload = () => activeCam.classList.add('has-photo');
+      activePhoto.onerror = () => {
+        activeCam.classList.remove('has-photo');
+        activePhoto.hidden = true;
+      };
+      activePhoto.src = url;
+    } else {
+      activeCam.classList.add('has-photo');
+    }
+  }
 
   function findActivePeer() {
     const fifo = Array.isArray(roomState?.fifo) ? roomState.fifo : [];
@@ -185,19 +251,27 @@ function initTeacherAv() {
   }
 
   function syncActiveReaderVideo() {
+    const fifo = Array.isArray(roomState?.fifo) ? roomState.fifo : [];
+    const activeStudent = fifo.find((s) => s.status === 'active');
+    const activeId = roomState?.activeReaderId || activeStudent?.id;
+    const activeName =
+      roomState?.activeReaderName || activeStudent?.name || els.activeName?.textContent || 'Pelajar';
+
+    // Slot FIFO = foto profil (bukan webcam). Webcam kekal di Jitsi / PiP terapung.
+    setActiveReaderPhoto(activeId, activeName);
+
     const match = findActivePeer();
-    if (match && activeVideo) {
-      if (activeVideo.srcObject !== match.stream) {
-        activeVideo.srcObject = match.stream;
-        activeVideo.play().catch(() => {});
-      }
-      activeCam?.classList.add('has-video');
+    if (match) {
       const cam = match.camOn !== false ? 'Cam On' : 'Cam Off';
       const mic = match.micOn ? 'Mic On' : 'Mic Off';
       if (activeAvLabel) activeAvLabel.textContent = `Sedang Baca · ${mic} · ${cam}`;
+    } else if (activeStudent || roomState?.activeReaderId) {
+      if (activeAvLabel) {
+        activeAvLabel.textContent = embeddedInPortal
+          ? 'Sedang Baca · video live di PiP Kamera (Jitsi)'
+          : 'Sedang Baca';
+      }
     } else {
-      if (activeVideo) activeVideo.srcObject = null;
-      activeCam?.classList.remove('has-video');
       if (activeAvLabel) activeAvLabel.textContent = 'Sedang Baca';
     }
 
@@ -336,6 +410,21 @@ function initTeacherAv() {
 }
 
 function patch(partial) {
+  // Optimistic UI — label dock bergerak serta-merta; server sahkan via event `state`.
+  if (partial && typeof partial === 'object') {
+    roomState = { ...roomState, ...partial };
+    if (partial.page != null && els.dockPageLabel) {
+      els.dockPageLabel.textContent = `${clampPage(partial.page)} / 604`;
+    }
+    if (partial.teacherZoom != null && els.dockZoomLabel) {
+      els.dockZoomLabel.textContent = `${clampZoom(partial.teacherZoom)}%`;
+    }
+    if (partial.mode != null) {
+      document.querySelectorAll('[data-mode]').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-mode') === partial.mode);
+      });
+    }
+  }
   socket.emit('teacher_update', partial);
 }
 
@@ -404,24 +493,51 @@ function renderStagePhotoStrip(state) {
     .join('');
 }
 
+function setViewSwitchUi(showPhoto, hasPhoto) {
+  const pairs = [
+    [els.btnStageMushaf, els.btnStagePhoto],
+    [els.btnStageMushafTop, els.btnStagePhotoTop],
+  ];
+  for (const [mushafBtn, photoBtn] of pairs) {
+    if (photoBtn) photoBtn.disabled = !hasPhoto;
+    mushafBtn?.classList.toggle('active', !showPhoto);
+    photoBtn?.classList.toggle('active', showPhoto);
+  }
+}
+
+function switchStageView(stage) {
+  if (stage === 'photo') {
+    if (!getSharedPhotos(roomState).length) {
+      if (els.sharePhotoMeta) {
+        els.sharePhotoMeta.textContent = 'Muat naik atau screenshot foto dulu sebelum tukar ke Foto';
+      }
+      els.sharePhotoInput?.click();
+      return;
+    }
+    patch({ stageView: 'photo' });
+    return;
+  }
+  patch({ stageView: 'mushaf' });
+}
+
 function applyStageView(state) {
   const photos = getSharedPhotos(state);
   const hasPhoto = photos.length > 0;
   const showPhoto = state.stageView === 'photo' && hasPhoto;
 
-  els.btnStagePhoto.disabled = !hasPhoto;
-  els.btnStageMushaf.classList.toggle('active', !showPhoto);
-  els.btnStagePhoto.classList.toggle('active', showPhoto);
+  setViewSwitchUi(showPhoto, hasPhoto);
   els.btnClearPhoto.hidden = !hasPhoto;
 
   if (hasPhoto) {
-    els.sharePhotoMeta.textContent = `${photos.length}/10 foto · aktif: ${state.sharedPhotoName || 'Nota'}`;
+    els.sharePhotoMeta.textContent = showPhoto
+      ? `Pelajar nampak FOTO · ${photos.length}/10 · ${state.sharedPhotoName || 'Nota'}`
+      : `Foto sedia (${photos.length}/10) — tekan Foto untuk papar ke pelajar`;
     if (state.sharedPhotoUrl) {
       const next = new URL(state.sharedPhotoUrl, window.location.origin).href;
       if (els.sharedPhotoImg.src !== next) els.sharedPhotoImg.src = state.sharedPhotoUrl;
     }
   } else {
-    els.sharePhotoMeta.textContent = 'Tiada foto — maks 10 nota sesi';
+    els.sharePhotoMeta.textContent = 'Tiada foto — muat naik JPG/PNG panduan (huruf/bacaan)';
     els.sharedPhotoImg.removeAttribute('src');
   }
 
@@ -441,7 +557,29 @@ function applyStageView(state) {
   }
 }
 
+function notifyPortalFifoActive(state, prevName) {
+  if (!embeddedInPortal) return;
+  const activeName = (state.activeReaderName || '').trim();
+  const activeId = state.activeReaderId || null;
+  try {
+    window.parent.postMessage(
+      {
+        source: 'alhelmi-mushaf',
+        type: 'fifo-active-changed',
+        activeReaderId: activeId,
+        activeReaderName: activeName || null,
+        prevActiveName: prevName || null,
+        muteAllExceptActive: Boolean(state.muteAllExceptActive),
+      },
+      '*',
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 function applyState(state) {
+  const prevActiveName = lastFifoActiveName;
   roomState = state;
   const pageSync = state.pageSync !== false;
   els.pageSync.checked = pageSync;
@@ -463,11 +601,38 @@ function applyState(state) {
   const waiting = fifo.filter((s) => s.status === 'waiting' || s.status === 'active');
   els.fifoCount.textContent = `${waiting.length}/${fifo.length}`;
 
-  const active = fifo.find((s) => s.status === 'active') || null;
+  let active = fifo.find((s) => s.status === 'active') || null;
+  if (!active && state.activeReaderId) {
+    active = fifo.find((s) => String(s.id) === String(state.activeReaderId)) || null;
+  }
+  // Sync Moodle/portal boleh set activeReader tanpa entry FIFO — tetap papar slot + Tamat.
+  if (!active && (state.activeReaderId || state.activeReaderName)) {
+    active = {
+      id: state.activeReaderId || 'sync-active',
+      name: (state.activeReaderName || '').trim() || 'Pelajar',
+      status: 'active',
+    };
+  }
   if (active) {
     els.activeSlot.hidden = false;
-    els.activeName.textContent = active.name;
-    els.activeInitials.textContent = initials(active.name);
+    const label = (active.name || state.activeReaderName || '').trim() || 'Pelajar';
+    els.activeName.textContent = label;
+    els.activeInitials.textContent = initials(label);
+    // Foto profil (bukan webcam) — syncActiveReaderVideo juga akan set semula
+    const photo = document.getElementById('active-reader-photo');
+    const cam = photo?.closest('.active-cam');
+    const url = /^\d+$/.test(String(active.id))
+      ? `https://learn.alhelmi.com/user/pix.php/${active.id}/f2.jpg`
+      : null;
+    if (photo && url) {
+      photo.hidden = false;
+      photo.alt = label;
+      if (photo.getAttribute('src') !== url) photo.src = url;
+      cam?.classList.add('has-photo');
+    } else if (photo) {
+      photo.hidden = true;
+      cam?.classList.remove('has-photo');
+    }
   } else {
     els.activeSlot.hidden = true;
   }
@@ -477,6 +642,12 @@ function applyState(state) {
     if (student.status === 'active') continue;
     els.fifoList.appendChild(renderFifoItem(student));
   }
+
+  const nextActiveName = (active?.name || state.activeReaderName || '').trim();
+  if (nextActiveName !== prevActiveName) {
+    notifyPortalFifoActive(state, prevActiveName);
+  }
+  lastFifoActiveName = nextActiveName;
 }
 
 function bindDock() {
@@ -546,6 +717,7 @@ function onDockSearchInput() {
         selectedPage = s.page;
         els.dockSearch.value = `${s.num}. ${s.name}`;
         els.dockResults.hidden = true;
+        patch({ page: clampPage(s.page) });
       });
       els.dockResults.appendChild(li);
     }
@@ -583,11 +755,10 @@ els.pageSync.addEventListener('change', () => {
   patch({ pageSync: on });
 });
 
-els.btnStageMushaf?.addEventListener('click', () => patch({ stageView: 'mushaf' }));
-els.btnStagePhoto?.addEventListener('click', () => {
-  if (!roomState?.sharedPhotoUrl) return;
-  patch({ stageView: 'photo' });
-});
+els.btnStageMushaf?.addEventListener('click', () => switchStageView('mushaf'));
+els.btnStagePhoto?.addEventListener('click', () => switchStageView('photo'));
+els.btnStageMushafTop?.addEventListener('click', () => switchStageView('mushaf'));
+els.btnStagePhotoTop?.addEventListener('click', () => switchStageView('photo'));
 els.btnClearPhoto?.addEventListener('click', () => socket.emit('clear_photo'));
 
 els.sharePhotoGallery?.addEventListener('click', (event) => {
@@ -679,15 +850,41 @@ document.addEventListener('keydown', (event) => {
   postToMushaf({ type: 'mushaf-scroll', key: event.key });
 });
 
-els.btnEndTurn.addEventListener('click', () => socket.emit('fifo_action', { type: 'end' }));
-els.btnMuteAll.addEventListener('click', () => {
+els.btnEndTurn?.addEventListener('click', () => {
+  if (!socket.connected) {
+    if (els.muteHint) els.muteHint.textContent = 'Socket terputus — refresh bilik.';
+    return;
+  }
+  socket.emit('fifo_action', { type: 'end' });
+  if (els.muteHint) els.muteHint.textContent = 'Menamatkan giliran…';
+});
+
+/** Portal (app.alhelmi.com) — Tamat Giliran di luar iframe (elak PiP tutup butang). */
+window.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.source !== 'alhelmi-portal' || data.type !== 'fifo-end') return;
+  const okOrigin =
+    event.origin === window.location.origin ||
+    event.origin === 'https://app.alhelmi.com' ||
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(event.origin);
+  if (!okOrigin) return;
+  if (!socket.connected) {
+    if (els.muteHint) els.muteHint.textContent = 'Socket terputus — refresh bilik.';
+    return;
+  }
+  socket.emit('fifo_action', { type: 'end' });
+  if (els.muteHint) els.muteHint.textContent = 'Menamatkan giliran…';
+});
+els.btnMuteAll?.addEventListener('click', () => {
   socket.emit('fifo_action', { type: 'mute_all' });
   const active = roomState?.activeReaderName;
-  els.muteHint.textContent = active
-    ? `Semua dimatikan kecuali ${active}.`
-    : 'Mikrofon semua pelajar dimatikan.';
+  if (els.muteHint) {
+    els.muteHint.textContent = active
+      ? `Semua dimatikan kecuali ${active}.`
+      : 'Mikrofon semua pelajar dimatikan.';
+  }
 });
-els.btnResetFifo.addEventListener('click', () => socket.emit('fifo_action', { type: 'reset' }));
+els.btnResetFifo?.addEventListener('click', () => socket.emit('fifo_action', { type: 'reset' }));
 
 function mediaMetaForStudent(student) {
   const st = peerMediaByUserId.get(student.id) || peerMediaByName.get(student.name);

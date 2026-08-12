@@ -7,16 +7,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Fraunces:opsz,wght@9..144,560;9..144,650&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/classroom.css?v=34" />
+  <link rel="stylesheet" href="/classroom.css?v=40" />
 </head>
 <body class="role-teacher">
   <div class="room-shell">
     <aside class="teacher-panel" aria-label="Panel kawalan guru">
       <header class="panel-header">
-        <div>
+        <div class="panel-heading">
           <p class="panel-kicker">Kelas Talaqqi</p>
           <h1 id="class-title">Kelas A</h1>
-          <p class="panel-sub" id="teacher-name">Ustaz (lokal)</p>
         </div>
         <span class="live-pill" id="conn-pill">Menyambung…</span>
       </header>
@@ -24,29 +23,35 @@
       <label class="sync-card" title="Pelajar ikut halaman guru">
         <div>
           <strong id="page-sync-label">Mod Sync: Aktif</strong>
-          <span>Skrin pelajar ikut kawalan guru</span>
+          <span>Skrin pelajar ikut guru</span>
         </div>
         <input type="checkbox" id="page-sync" checked />
         <span class="switch" aria-hidden="true"></span>
       </label>
 
-      <section class="share-card" aria-label="Kongsi foto">
+      <section class="share-card" aria-label="Kawalan paparan skrin">
         <div class="share-head">
-          <h2>Paparan skrin</h2>
+          <h2>Kawalan paparan</h2>
           <span id="share-status">Mushaf</span>
         </div>
-        <div class="dock-seg share-stage-seg" role="group" aria-label="Pilih paparan">
-          <button type="button" class="dock-seg-btn active" id="btn-stage-mushaf" data-stage="mushaf">Mushaf</button>
-          <button type="button" class="dock-seg-btn" id="btn-stage-photo" data-stage="photo" disabled>Foto</button>
+        <div class="view-switch" role="group" aria-label="Tukar paparan Mushaf atau Foto">
+          <button type="button" class="view-switch-btn active" id="btn-stage-mushaf" data-stage="mushaf">
+            <span class="view-switch-icon" aria-hidden="true">📖</span>
+            Mushaf
+          </button>
+          <button type="button" class="view-switch-btn" id="btn-stage-photo" data-stage="photo" disabled>
+            <span class="view-switch-icon" aria-hidden="true">🖼</span>
+            Foto
+          </button>
         </div>
-        <button type="button" class="btn btn-primary btn-block" id="btn-screenshot-note" title="Ambil screenshot mushaf beserta nota, hantar kepada pelajar">
-          📷 Screenshot nota
-        </button>
-        <label class="btn btn-ghost btn-block share-upload-btn">
-          Muat naik JPG / PNG
+        <label class="btn btn-primary btn-block share-upload-btn" id="share-upload-label">
+          Muat naik foto panduan
           <input type="file" id="share-photo-input" accept="image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
         </label>
-        <p class="share-file-meta" id="share-photo-meta">Tiada foto — maks 10 nota sesi</p>
+        <button type="button" class="btn btn-ghost btn-block" id="btn-screenshot-note" title="Screenshot mushaf + nota, hantar sebagai foto">
+          📷 Screenshot nota
+        </button>
+        <p class="share-file-meta" id="share-photo-meta">Tiada foto — maks 10</p>
         <ul id="share-photo-gallery" class="share-photo-gallery" hidden></ul>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-photo" hidden>Buang semua foto</button>
       </section>
@@ -58,7 +63,7 @@
         </div>
         <div id="active-reader-slot" class="active-slot" hidden>
           <div class="active-cam" aria-hidden="true">
-            <video id="active-reader-video" class="active-reader-video" playsinline autoplay></video>
+            <img id="active-reader-photo" class="active-reader-photo" alt="" hidden />
             <span id="active-initials">A</span>
           </div>
           <div class="active-meta">
@@ -68,23 +73,28 @@
           <button type="button" class="btn btn-end" id="btn-end-turn">Tamat Giliran</button>
         </div>
         <ul id="fifo-list" class="fifo-list" aria-label="Giliran menunggu"></ul>
-        <button type="button" class="btn btn-ghost btn-block" id="btn-reset-fifo">Reset senarai demo</button>
       </section>
 
       <div class="panel-footer">
         <button type="button" class="btn btn-danger btn-block" id="btn-mute-all">
           Matikan Mic Semua Pelajar
         </button>
-        <p class="hint" id="mute-hint">Kecuali pelajar yang sedang baca — mikrofon pelajar lain dimatikan.</p>
-        <a class="student-link" id="student-link" href="/student?room=kelas-a" target="_blank" rel="noopener" title="Pratonton paparan pelajar">
-          Pratonton paparan pelajar ↗
-        </a>
+        <div class="panel-footer-links">
+          <button type="button" class="text-link" id="btn-reset-fifo">Reset senarai demo</button>
+          <a class="text-link" id="student-link" href="/student?room=kelas-a" target="_blank" rel="noopener" title="Pratonton paparan pelajar">
+            Pratonton pelajar ↗
+          </a>
+        </div>
       </div>
     </aside>
 
     <section class="mushaf-panel" aria-label="Paparan mushaf dikongsi">
       <header class="mushaf-panel-bar">
         <span id="stage-title">Mushaf Madinah</span>
+        <div class="view-switch view-switch-compact" role="group" aria-label="Tukar paparan cepat">
+          <button type="button" class="view-switch-btn active" id="btn-stage-mushaf-top" data-stage="mushaf">Mushaf</button>
+          <button type="button" class="view-switch-btn" id="btn-stage-photo-top" data-stage="photo" disabled>Foto</button>
+        </div>
         <span id="room-label">Bilik: —</span>
       </header>
 
@@ -174,6 +184,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/classroom.js?v=34"></script>
+  <script type="module" src="/classroom.js?v=41"></script>
 </body>
 </html>

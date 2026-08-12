@@ -1,4 +1,4 @@
-import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-20';
+import { createAnnotationLayer } from './annotation-layer.js?v=embed-fix-22';
 
 const params = new URLSearchParams(window.location.search);
 const accessToken = (params.get('token') || '').trim();
@@ -7,6 +7,7 @@ const requestedRoom = (params.get('room') || '').trim();
 const localDev = params.get('local') === '1' || params.get('dev') === '1';
 const embedMode = params.get('embed') === '1';
 const viewerOnly = params.get('viewer') === '1';
+const queueOwner = params.get('queue_owner') === 'portal' ? 'portal' : 'mushaf';
 const queryRole = params.get('role') === 'teacher' ? 'teacher' : 'student';
 const queryName = (params.get('name') || '').trim();
 /** Shell pelajar (/student) — kunci alat anotasi walaupun JWT guru. */
@@ -266,6 +267,7 @@ async function init() {
     userId: viewerUserId || undefined,
     role: localDev || !accessToken ? queryRole : undefined,
     name: queryName || undefined,
+    queueOwner,
   });
 }
 
@@ -753,7 +755,6 @@ function isStudentFollowing() {
   if (role !== 'student') return false;
   if (isStudentTurnLocked()) return true;
   if (roomState && roomState.pageSync === false) return false;
-  if (roomState && roomState.pageSync === true) return true;
   return studentFollowTeacher;
 }
 

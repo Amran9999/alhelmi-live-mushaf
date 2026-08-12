@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/classroom.css?v=34" />
+  <link rel="stylesheet" href="/classroom.css?v=40" />
 </head>
 <body class="role-student student-shell">
   <div class="student-view">
@@ -20,14 +20,30 @@
       <div id="stage-photo-strip" class="stage-photo-strip" hidden></div>
     </div>
 
-    <aside id="student-notes-bar" class="student-notes-bar" hidden aria-label="Nota sesi untuk muat turun">
-      <div class="student-notes-head">
-        <strong>Nota saya</strong>
-        <span id="student-notes-count">0 sesi</span>
+    <aside id="student-notes-bar" class="student-notes-bar is-collapsed" hidden aria-label="Nota sesi untuk muat turun">
+      <button type="button" id="student-notes-toggle" class="student-notes-toggle" aria-expanded="false">
+        Nota <span id="student-notes-count">0</span>
+      </button>
+      <div class="student-notes-panel">
+        <div class="student-notes-head">
+          <strong>Nota saya</strong>
+          <button type="button" id="student-notes-close" class="student-notes-close" title="Tutup">×</button>
+        </div>
+        <p class="student-notes-hint">Klik untuk pratonton · tidak ganti mushaf · 3 sesi terkini</p>
+        <div id="student-notes-list" class="student-notes-list"></div>
       </div>
-      <p class="student-notes-hint">Disimpan 3 sesi terkini · auto padam selepas itu</p>
-      <div id="student-notes-list" class="student-notes-list"></div>
     </aside>
+
+    <div id="student-note-lightbox" class="student-note-lightbox" hidden>
+      <div class="student-note-lightbox-card">
+        <div class="student-note-lightbox-head">
+          <strong id="student-note-lightbox-title">Nota</strong>
+          <button type="button" id="student-note-lightbox-close" class="student-notes-close" title="Tutup">×</button>
+        </div>
+        <img id="student-note-lightbox-img" alt="Nota screenshot" />
+        <a id="student-note-lightbox-dl" class="student-note-lightbox-dl" href="#" download="nota.jpg">Muat turun</a>
+      </div>
+    </div>
 
     <div class="pip-teacher pip-student" id="pip-teacher-remote" role="group" aria-label="Kamera guru">
       <div class="pip-chrome">
@@ -60,6 +76,6 @@
     </footer>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/student.js?v=13"></script>
+  <script type="module" src="/student.js?v=19"></script>
 </body>
 </html>

@@ -21,6 +21,7 @@ export function createClassroomAv({
   let localStream = null;
   let camOn = true;
   let micOn = true;
+  let identity = String(userId || '');
   let mutePolicy = { muteAllExceptActive: false, activeReaderId: null };
   /** @type {Map<string, RTCPeerConnection>} */
   const pcs = new Map();
@@ -37,21 +38,39 @@ export function createClassroomAv({
   function getEffectiveMicOn() {
     if (!micOn) return false;
     if (mutePolicy.muteAllExceptActive && role === 'student') {
-      return mutePolicy.activeReaderId === userId;
+      return String(mutePolicy.activeReaderId || '') === identity;
     }
     return true;
   }
 
+  function getEffectiveCamOn() {
+    if (!camOn) return false;
+    if (mutePolicy.muteAllExceptActive && role === 'student') {
+      return String(mutePolicy.activeReaderId || '') === identity;
+    }
+    return true;
+  }
+
+  function setUserId(nextId) {
+    identity = String(nextId || '');
+    applyTrackEnables();
+  }
+
   function applyTrackEnables() {
     if (!localStream) return;
-    for (const t of localStream.getVideoTracks()) t.enabled = camOn;
+    const allowCam = getEffectiveCamOn();
     const allowMic = getEffectiveMicOn();
+    for (const t of localStream.getVideoTracks()) t.enabled = allowCam;
     for (const t of localStream.getAudioTracks()) t.enabled = allowMic;
-    if (localVideo) localVideo.classList.toggle('is-cam-off', !camOn);
+    if (localVideo) localVideo.classList.toggle('is-cam-off', !allowCam);
     broadcastMediaState();
   }
 
   async function startLocal() {
+    if (skipLocalMedia) {
+      status('Video bilik dikendalikan portal (Jitsi)');
+      return null;
+    }
     if (localStream) return localStream;
     try {
       localStream = await navigator.mediaDevices.getUserMedia({
@@ -250,12 +269,18 @@ export function createClassroomAv({
 
   return {
     startLocal,
+    setUserId,
     setCam,
     setMic,
     toggleCam,
     toggleMic,
     applyMutePolicy,
-    getState: () => ({ camOn, micOn: getEffectiveMicOn(), wantMic: micOn }),
+    getState: () => ({
+      camOn: getEffectiveCamOn(),
+      wantCam: camOn,
+      micOn: getEffectiveMicOn(),
+      wantMic: micOn,
+    }),
     closeAll,
   };
 }

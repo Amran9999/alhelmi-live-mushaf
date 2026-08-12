@@ -73,7 +73,7 @@ $remoteScript = @"
 set -e
 REMOTE='$RemoteDir'
 mkdir -p "`$REMOTE/public" "`$REMOTE/data"
-cp -a /tmp/mushaf-upload/server.js /tmp/mushaf-upload/jwt.js /tmp/mushaf-upload/package.json "`$REMOTE/" 2>/dev/null || true
+cp -a /tmp/mushaf-upload/server.js /tmp/mushaf-upload/jwt.js /tmp/mushaf-upload/student-notes.js /tmp/mushaf-upload/package.json "`$REMOTE/" 2>/dev/null || true
 [ -f /tmp/mushaf-upload/package-lock.json ] && cp -a /tmp/mushaf-upload/package-lock.json "`$REMOTE/"
 cp -a /tmp/mushaf-upload/public/. "`$REMOTE/public/"
 [ -d /tmp/mushaf-upload/data ] && cp -a /tmp/mushaf-upload/data/. "`$REMOTE/data/" || true

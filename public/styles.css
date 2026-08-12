@@ -1261,6 +1261,18 @@ body.classroom-fs.classroom-mode-baca.role-teacher .annotation-toolbar.teacher-o
   color: #fff;
 }
 
+.annotation-tool-text {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  min-width: 1.9rem;
+  color: #e2e8f0;
+}
+
+.annotation-tool-text.active {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
 .annotation-tool-clear,
 .annotation-tool-clear-hl {
   width: auto;
